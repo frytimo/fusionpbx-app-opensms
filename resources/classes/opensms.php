@@ -30,16 +30,14 @@ class opensms {
 	 *
 	 * Inserts a record representing an access control entry into the database.
 	 *
-	 * @param database $database  Database connection/helper used to perform the insert.
-	 * @param string   $name      Unique name for the access control entry.
-	 * @param bool     $enabled   Whether the access control entry is enabled.
-	 * @param string   $description Human-readable description of the access control entry.
+	 * @param database $database            Database connection/helper used to perform the insert.
+	 * @param string   $access_control_uuid The UUID of the access control to be created.
+	 * @param string   $name                Unique name for the access control entry.
+	 * @param string   $description         Human-readable description of the access control entry.
 	 *
-	 * @return string The identifier (UUID or primary key) of the newly created access control entry on success,
-	 *                or an empty string if creation failed.
+	 * @return void
 	 */
-	public static function create_access_control(database $database, string $name, bool $enabled, string $description): string {
-		$access_control_uuid = uuid();
+	public static function create_access_control(database $database, string $access_control_uuid, string $name, string $description): void {
 		$array['access_controls'][] = [
 			'access_control_uuid' => $access_control_uuid,
 			'access_control_name' => $name,
@@ -47,7 +45,16 @@ class opensms {
 			'access_control_description' => $description,
 		];
 		$database->save($array);
-		return $access_control_uuid;
+	}
+
+	public static function get_cidrs(database $database, string $node_uuid): array {
+		$cidrs = [];
+		$sql = 'select access_control_node_uuid, node_cidr from v_access_control_nodes where access_control_uuid = :access_control_uuid';
+		$result = $database->select($sql, ['access_control_uuid' => $node_uuid], 'all');
+		if (!empty($result)) {
+			$cidrs = array_column($result, 'node_cidr', 'access_control_node_uuid');
+		}
+		return $cidrs;
 	}
 
 	public static function messages(array $providers, settings $settings): array {

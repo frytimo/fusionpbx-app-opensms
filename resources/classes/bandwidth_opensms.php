@@ -39,7 +39,7 @@ class bandwidth_opensms implements opensms_provider {
 	 * @return bool True if the IP address is present/allowed in the settings; false otherwise.
 	 */
 	public static function has(settings $settings, string $ip_address): bool {
-		$bandwidth_cidrs = $settings->get('opensms', 'bandwidth_cidr', self::CIDR);
+		$bandwidth_cidrs = opensms::get_cidrs($settings->database(), self::ACCESS_CONTROL_UUID);
 		foreach ($bandwidth_cidrs as $cidr) {
 			if (check_cidr($cidr,$ip_address)) {
 				return true;
@@ -214,8 +214,8 @@ class bandwidth_opensms implements opensms_provider {
 	 */
 	public static function app_defaults(database $database): void {
 		if (!opensms::has_acl($database, self::ACCESS_CONTROL_UUID)) {
-			$accessControlUuid = opensms::create_access_control($database, self::OPENSMS_PROVIDER_LABEL, true, self::OPENSMS_PROVIDER_DESCRIPTION);
-			opensms::add_acl_cidrs($database, $accessControlUuid, self::CIDR, self::OPENSMS_PROVIDER_LABEL);
+			opensms::create_access_control($database, self::ACCESS_CONTROL_UUID, self::OPENSMS_PROVIDER_LABEL, self::OPENSMS_PROVIDER_DESCRIPTION);
+			opensms::add_acl_cidrs($database, self::ACCESS_CONTROL_UUID, self::CIDR, self::OPENSMS_PROVIDER_LABEL);
 		}
 	}
 
