@@ -47,10 +47,10 @@ class opensms {
 		$database->save($array);
 	}
 
-	public static function get_cidrs(database $database, string $node_uuid): array {
+	public static function get_cidrs(database $database, string $access_control_uuid): array {
 		$cidrs = [];
 		$sql = 'select access_control_node_uuid, node_cidr from v_access_control_nodes where access_control_uuid = :access_control_uuid';
-		$result = $database->select($sql, ['access_control_uuid' => $node_uuid], 'all');
+		$result = $database->select($sql, ['access_control_uuid' => $access_control_uuid], 'all');
 		if (!empty($result)) {
 			$cidrs = array_column($result, 'node_cidr', 'access_control_node_uuid');
 		}
