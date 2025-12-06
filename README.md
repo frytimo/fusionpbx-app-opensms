@@ -18,6 +18,8 @@ Before installing OpenSMS, ensure you have the following:
 
 - Git (for cloning the repository)
 - An SMS provider supported by the OpenSMS system (Currently only Bandwidth.com)
+- PHP 7.1 or higher
+- FusionPBX 5.4 or higher
 
 ### Installation Steps
 
