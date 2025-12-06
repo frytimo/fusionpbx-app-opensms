@@ -1,12 +1,12 @@
 <?php
 
-/** 
+/**
  * Class opensms_switch_writer
  *
- * This class implements the opensms_listener interface to send incoming
+ * This class implements the opensms_message_listener interface to send incoming
  * OpenSMS messages to the switch via event socket.
  */
-class opensms_writer_switch implements opensms_listener {
+class opensms_writer_switch implements opensms_message_listener {
 
 	/**
 	 * Process the incoming OpenSMS message and send it to the switch.
@@ -51,6 +51,5 @@ class opensms_writer_switch implements opensms_listener {
 		$event .= "_body: ". $message->sms;
 
 		event_socket::command($event);
-		
 	}
 }

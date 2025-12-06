@@ -1,9 +1,9 @@
 <?php
 
 /**
- * OpenSMS Provider Interface
+ * OpenSMS Adapter Interface
  */
-interface opensms_provider {
+interface opensms_message_adapter {
 
 	/**
 	 * Parse provider input into an opensms_message instance.

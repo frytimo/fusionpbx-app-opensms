@@ -57,27 +57,28 @@ class opensms {
 		return $cidrs;
 	}
 
-	public static function messages(array $providers, settings $settings): array {
+	public static function messages(array $adapters, settings $settings): array {
 		$messages = [];
-		// Iterate through each provider class
-		/** @var opensms_provider $provider_class */
-		foreach ($providers as $provider_class) {
-			// Process any request that is valid for the provider
-			if ($provider_class::has($settings, $_SERVER['REMOTE_ADDR'])) {
-				// Create the provider instance
-				/** @var opensms_provider $provider */
-				$provider = new $provider_class();
+		// Iterate through each adapter class
+		/** @var opensms_message_adapter $adapter_class */
+		foreach ($adapters as $adapter_class) {
+			// Process any request that is valid for the adapter
+			if ($adapter_class::has($settings, $_SERVER['REMOTE_ADDR'])) {
+				// Create the adapter instance
+				/** @var opensms_message_adapter $adapter */
+				$adapter = new $adapter_class();
 
-				// Call the provider to parse the message
-				$message = $provider->parse($settings);
+				// Call the adapter to parse the message
+				$message = $adapter->parse($settings);
 
-				// Providers must make sure to return to_number and from_number
+				// adapters must make sure to return to_number and from_number
 				if (empty($message->to_number) || empty($message->from_number)) {
-					// Parse error, skip to next provider
+					// Parse error, skip to next adapter
 					continue;
 				}
 
-				// Do not exit the loop, in case multiple providers match
+				// Do not exit the loop, in case multiple adapters match
+				$messages[] = $message;
 			}
 		}
 		return $messages;
@@ -104,9 +105,9 @@ class opensms {
 	 */
 	public static function notify(array $listeners, settings $settings, opensms_message $message): void {
 		foreach ($listeners as $class_name) {
-			/** @var opensms_listener $listener */
+			/** @var opensms_message_listener $listener */
 			$listener = new $class_name();
-			if ($listener instanceof opensms_listener) {
+			if ($listener instanceof opensms_message_listener) {
 				$listener->on_message($settings, $message);
 			}
 		}

@@ -3,10 +3,10 @@
 /**
  * Class opensms_database_writer
  *
- * This class implements the opensms_listener interface to write incoming
+ * This class implements the opensms_message_listener interface to write incoming
  * OpenSMS messages to the database.
  */
-class opensms_writer_database implements opensms_listener {
+class opensms_writer_database implements opensms_message_listener {
 	/**
 	 * Handle an incoming message and persist it to storage.
 	 *

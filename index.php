@@ -18,13 +18,13 @@
 	$auto_loader = new auto_loader(true);
 	$auto_loader->reload_classes();
 
-// Get the list of providers, modifiers, and listeners
-	$providers = $auto_loader->get_interface_list('opensms_provider');
-	$modifiers = $auto_loader->get_interface_list('opensms_modifier');
-	$listeners = $auto_loader->get_interface_list('opensms_listener');
+// Get the list of adapters, modifiers, and listeners
+	$adapters = $auto_loader->get_interface_list('opensms_message_adapter');
+	$modifiers = $auto_loader->get_interface_list('opensms_message_modifier');
+	$listeners = $auto_loader->get_interface_list('opensms_message_listener');
 
-// Call the providers to get messages
-	$messages = opensms::messages($providers, $settings);
+// Call the adapters to get messages
+	$messages = opensms::messages($adapters, $settings);
 	foreach ($messages as $message) {
 		opensms::modify($modifiers, $settings, $message);
 		opensms::notify($listeners, $settings, $message);

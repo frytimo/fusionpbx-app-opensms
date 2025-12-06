@@ -1,6 +1,6 @@
 <?php
 
-class bandwidth_opensms implements opensms_provider {
+class bandwidth_adapter implements opensms_message_adapter {
 
 	const app_name = 'bandwidth_opensms';
 	const app_uuid = 'c1624fd7-ab9d-4dea-9c67-5e2da74a603e';
@@ -22,7 +22,6 @@ class bandwidth_opensms implements opensms_provider {
 		'18.233.250.246/32',
 		'52.72.24.132/32',
 	];
-
 
 	protected $settings;
 

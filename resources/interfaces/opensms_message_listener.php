@@ -1,6 +1,6 @@
 <?php
 
-interface opensms_listener {
+interface opensms_message_listener {
 	/**
 	 * Process an OpenSMS message.
 	 *
