@@ -170,8 +170,29 @@ class bandwidth_opensms implements opensms_provider {
 	 * @return array|null
 	 */
 	public static function app_config(): ?array {
-		// No config required
-		return null;
+		$y = 0;
+		$defaults = [];
+		$defaults['default_settings'][$y]['default_setting_uuid'] = 'c01ef185-72b8-4632-9226-df4dc7658862';
+		$defaults['default_settings'][$y]['default_setting_category'] = self::OPENSMS_PROVIDER_NAME;
+		$defaults['default_settings'][$y]['default_setting_subcategory'] = 'account_id';
+		$defaults['default_settings'][$y]['default_setting_name'] = 'text';
+		$defaults['default_settings'][$y]['default_setting_value'] = '';
+		$defaults['default_settings'][$y]['default_setting_enabled'] = 'false';
+		$y++;
+		$defaults['default_settings'][$y]['default_setting_uuid'] = 'e853d3af-ecf0-4178-8923-f4ad622d721c';
+		$defaults['default_settings'][$y]['default_setting_category'] = self::OPENSMS_PROVIDER_NAME;
+		$defaults['default_settings'][$y]['default_setting_subcategory'] = 'callback_user_id';
+		$defaults['default_settings'][$y]['default_setting_name'] = 'text';
+		$defaults['default_settings'][$y]['default_setting_value'] = '';
+		$defaults['default_settings'][$y]['default_setting_enabled'] = 'false';
+		$y++;
+		$defaults['default_settings'][$y]['default_setting_uuid'] = 'e853d3af-ecf0-4178-8923-f4ad622d721c';
+		$defaults['default_settings'][$y]['default_setting_category'] = self::OPENSMS_PROVIDER_NAME;
+		$defaults['default_settings'][$y]['default_setting_subcategory'] = 'callback_password';
+		$defaults['default_settings'][$y]['default_setting_name'] = 'text';
+		$defaults['default_settings'][$y]['default_setting_value'] = '';
+		$defaults['default_settings'][$y]['default_setting_enabled'] = 'false';
+		return $defaults;
 	}
 
 	/**
