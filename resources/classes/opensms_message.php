@@ -116,6 +116,12 @@ class opensms_message {
 	 */
 	public $domain_name;
 
+	public $destination_uuid;
+
+	public $user_uuid;
+
+	public $group_uuid;
+
 	private $fields;
 
 	/**

@@ -4,7 +4,7 @@
  * Class message_modifier_010_extensions
  *
  * This class implements the opensms_message_modifier interface to resolve and assign
- * extensions for user UUIDs referenced by an opensms_message.
+ * extensions for the user and group UUIDs stored in the opensms_message.
  */
 class message_modifier_010_extensions implements opensms_message_modifier {
 	/**
@@ -40,7 +40,6 @@ class message_modifier_010_extensions implements opensms_message_modifier {
 				$sql .= "	from v_extension_users ";
 				$sql .= "	where user_uuid = :user_uuid ";
 				$sql .= ") ";
-				$sql .= "and e.domain_uuid = d.domain_uuid ";
 				$sql .= "and e.enabled = 'true' ";
 				$parameters['user_uuid'] = $user_uuid;
 				$user_extensions = $database->select($sql, $parameters, 'all');
