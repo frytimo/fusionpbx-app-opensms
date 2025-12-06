@@ -147,11 +147,11 @@ class opensms_message {
 		$this->domain_name = $domain_name;
 	}
 
-	public function set_field(string $field_name, mixed $value): void {
+	public function set_field(string $field_name, $value): void {
 		$this->fields[$field_name] = $value;
 	}
 
-	public function get_field(string $field_name): mixed {
+	public function get_field(string $field_name) {
 		return $this->fields[$field_name] ?? null;
 	}
 
