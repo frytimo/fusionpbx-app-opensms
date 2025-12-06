@@ -1,29 +1,7 @@
 <?php
 
 /**
- * Interface opensms_provider
- *
- * Contract for OpenSMS provider implementations used by FusionPBX.
- *
- * Implementations of this interface encapsulate integration with an SMS
- * gateway/provider and are expected to provide functionality such as:
- *  - sending SMS messages
- *  - querying delivery status for submitted messages
- *  - retrieving account information (balance, rates, limits)
- *  - configuring sender/credentials and handling provider-specific options
- *
- * Implementations should return consistent, well-documented response structures
- * and throw or surface provider-specific errors in a predictable manner so the
- * caller can handle transient failures, rate limiting, and permanent errors.
- *
- * Location: /var/www/fusionpbx/app/opensms/resources/interfaces/opensms_provider.php
- *
- * @package FusionPBX\OpenSMS
- * @subpackage Resources\Interfaces
- * @author FusionPBX
- * @since 1.0.0
- * @license See project LICENSE file
- * @link https://github.com/fusionpbx/fusionpbx
+ * OpenSMS Provider Interface
  */
 interface opensms_provider {
 

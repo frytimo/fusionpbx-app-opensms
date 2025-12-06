@@ -13,15 +13,11 @@
 
 // Disable the autoloader cache
 	$auto_loader = new auto_loader(false);
-
-// Ensure database instance is available
-	if (!isset($database) || !($database instanceof database)) {
-		$database = database::new();
-	}
+	$auto_loader->reload_classes();
 
 //configuration from sub apps
 	$opensms_providers = $auto_loader->get_interface_list('opensms_provider');
-	foreach ($opensms_providers as $provider_class => $file_path) {
+	foreach ($opensms_providers as $provider_class) {
         // $x is declared in caller and must not be declared here
         /** @var int $x */
         $opensms_config = $provider_class::app_config();
@@ -29,5 +25,4 @@
             $apps[$x] = $opensms_config;
             $x++;
         }
-		
 	}

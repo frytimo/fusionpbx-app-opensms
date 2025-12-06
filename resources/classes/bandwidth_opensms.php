@@ -186,7 +186,7 @@ class bandwidth_opensms implements opensms_provider {
 		$defaults['default_settings'][$y]['default_setting_value'] = '';
 		$defaults['default_settings'][$y]['default_setting_enabled'] = 'false';
 		$y++;
-		$defaults['default_settings'][$y]['default_setting_uuid'] = 'e853d3af-ecf0-4178-8923-f4ad622d721c';
+		$defaults['default_settings'][$y]['default_setting_uuid'] = '67d9116a-ea25-4494-93c1-ad5f56da968b';
 		$defaults['default_settings'][$y]['default_setting_category'] = self::OPENSMS_PROVIDER_NAME;
 		$defaults['default_settings'][$y]['default_setting_subcategory'] = 'callback_password';
 		$defaults['default_settings'][$y]['default_setting_name'] = 'text';

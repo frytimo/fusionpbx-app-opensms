@@ -5,7 +5,8 @@ if ($domains_processed === 1) {
 
 	// Disable the autoloader cache
 	$auto_loader = new auto_loader(false);
-	
+	$auto_loader->reload_classes();
+
 	if (!isset($database) || !($database instanceof database)) {
 		$database = database::new();
 	}
@@ -14,7 +15,7 @@ if ($domains_processed === 1) {
 	$providers = $auto_loader->get_interface_list('opensms_provider');
 
 	// Call app_defaults for each provider
-	foreach ($providers as $provider_class => $file_path) {
+	foreach ($providers as $provider_class) {
 		$provider_class::app_defaults($database);
 	}
 }
