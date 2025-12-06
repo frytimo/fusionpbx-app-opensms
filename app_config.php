@@ -1,6 +1,7 @@
 <?php
 
 // application details
+    /** @var int $x */
 	$apps[$x]['name'] = 'OpenSMS';
 	$apps[$x]['uuid'] = '67cb7df9-f738-4555-8e09-3911f06a863e';
 	$apps[$x]['category'] = 'System';
@@ -21,5 +22,12 @@
 //configuration from sub apps
 	$opensms_providers = $auto_loader->get_interface_list('opensms_provider');
 	foreach ($opensms_providers as $provider_class => $file_path) {
-		$apps[$x] = $provider_class::app_config();
+        // $x is declared in caller and must not be declared here
+        /** @var int $x */
+        $opensms_config = $provider_class::app_config();
+        if ($opensms_config !== null) {
+            $apps[$x] = $opensms_config;
+            $x++;
+        }
+		
 	}
