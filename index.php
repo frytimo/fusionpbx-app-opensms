@@ -9,7 +9,7 @@
 // Set globals
 	/** @var settings $settings */
 	global $settings;
-	
+
 // Requires FusionPBX 5.4.0 or higher
 	$fusion_version = software::version();
 	version_compare($fusion_version, '5.4.0', '<') and exit("FusionPBX 5.4.0 or higher is required.");
@@ -19,6 +19,7 @@
 
 // Create a new auto loader with cache disabled
 	$auto_loader = new auto_loader(true);
+	$auto_loader->reload_classes();
 
 // Get the list of providers, modifiers, and listeners
 	$providers = $auto_loader->get_interface_list('opensms_provider');
