@@ -14,9 +14,6 @@
 	$fusion_version = software::version();
 	version_compare($fusion_version, '5.4.0', '<') and exit("FusionPBX 5.4.0 or higher is required.");
 
-// Include functions
-	require_once __DIR__ . '/resources/functions/opensms_functions.php';
-
 // Create a new auto loader with cache disabled
 	$auto_loader = new auto_loader(true);
 	$auto_loader->reload_classes();
