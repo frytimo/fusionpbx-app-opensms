@@ -32,10 +32,8 @@ php /var/www/fusionpbx/core/upgrade/upgrade.php --defaults
 ```
 
 1. Configure any additional CIDRs:
-```bash
-cp config.example.json config.json
-# Edit config.json with your settings
-```
+
+Open the page to your Access Controls and adjust the ACL created by the provider app by adding or removing any default CIDRs.
 
 ## Usage
 
