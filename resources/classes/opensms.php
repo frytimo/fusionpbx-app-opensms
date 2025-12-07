@@ -91,15 +91,8 @@ class opensms {
 	/**
 	 * Retrieves messages from multiple SMS adapters
 	 *
-	 *
-	 *
-	 *
-	 *
 	 * @param array $adapters An array of SMS adapter instances to query for messages
-	 *
-	 *
 	 * @param settings $settings The settings object containing configuration parameters
-	 *
 	 *
 	 * @return array Returns an array of messages retrieved from all adapters
 	 */
