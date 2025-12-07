@@ -64,15 +64,39 @@ class opensms {
 	/**
 	 * Add CIDR blocks to an access control list
 	 *
-	 * @param database $database The database connection instance
-	 * @param string $access_control_uuid The UUID of the access control list to add CIDRs to
-	 * @param array $cidrs Array of CIDR notation IP address ranges to be added
-	 * @param string $description Description for the CIDR entries being added
+	 * @param database $database            The database connection instance
+	 * @param string   $access_control_uuid The UUID of the access control list to add CIDRs to
+	 * @param array    $cidrs               Array of CIDR notation IP address ranges to be added
+	 * @param string   $description         Description for the CIDR entries being added
 	 * @return void
 	 *
 	 * @throws \InvalidArgumentException If $listeners contains invalid entries.
-	 * @throws \Throwable If a listener throws an exception, it may be propagated
-	 *                    to the caller.
+	 * @throws \Throwable                If a listener throws an exception, it may be propagated
+	 *                                   to the caller.
+	 */
+	public static function add_acl_cidrs(database $database, string $access_control_uuid, array $cidrs, string $description): void {
+		foreach ($cidrs as $cidr) {
+			$array['access_control_nodes'][] = [
+				'access_control_node_uuid' => uuid(),
+				'access_control_uuid' => $access_control_uuid,
+				'node_type' => 'allow',
+				'node_cidr' => $cidr,
+				'node_description' => $description,
+			];
+		}
+
+		$database->save($array);
+	}
+
+	/**
+	 * Notifies all listeners with the opensms_message object
+	 *
+	 * This method should be called after the message modifiers to ensure there is a complete message
+	 *
+	 * @param array $listeners
+	 * @param settings $settings
+	 * @param opensms_message $message
+	 * @return void
 	 */
 	public static function notify(array $listeners, settings $settings, opensms_message $message): void {
 		foreach ($listeners as $class_name) {
