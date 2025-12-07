@@ -19,18 +19,24 @@ class message_modifier_020_profile implements opensms_message_modifier {
 	 * @return void
 	 */
 	public function modify(settings $settings, opensms_message $message): void {
-		$extension = $message->extensions[0] ?? null;
+		$extensions = $message->extensions ?? null;
 		$domain_name = $message->domain_name ?? null;
 
 		$event_socket = event_socket::create();
 
+		if (!$event_socket->is_connected()) {
+			return;
+		}
+
 		// Retrieve the SIP profile from settings
-		$command = "sofia_contact $extension@$domain_name";
-		$response = $event_socket->command("api $command");
-		if ($response != 'error/user_not_registered') {
-			$sip_profile = explode("/", $response)[1];
-			// Assign the SIP profile to the message
-			$message->sip_profile = $sip_profile;
+		foreach ($extensions as $extension) {
+			$command = "sofia_contact $extension@$domain_name";
+			$response = $event_socket->command("api $command");
+			if ($response != 'error/user_not_registered') {
+				$sip_profile = explode("/", $response)[1];
+				// Assign the SIP profile to the message
+				$message->sip_profile = $sip_profile;
+			}
 		}
 	}
 }

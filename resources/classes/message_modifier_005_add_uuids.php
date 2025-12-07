@@ -35,9 +35,9 @@ class message_modifier_005_add_uuids implements opensms_message_modifier {
 		$sql .= "	OR destination_area_code || destination_number = :destination_number ";
 		$sql .= "	OR destination_number = :destination_number ";
 		$sql .= ") ";
-		$sql .= "and provider_uuid is not null ";
-		$sql .= "and destination_enabled = 'true'; ";
+		$sql .= "and destination_enabled = true; ";
 		$parameters['destination_number'] = $message->to_number;
+		$parameters['destination_number'] = '19022012170';
 		$result = $database->select($sql, $parameters, 'row');
 
 		// Return a rejection to the provider here
@@ -51,8 +51,8 @@ class message_modifier_005_add_uuids implements opensms_message_modifier {
 			$message->destination_uuid = $destination_uuid;
 		}
 		$user_uuid = $result['user_uuid'] ?? null;
-		if (!empty($user_uuid) && is_uuid($user_uuid)) {
-			$message->user_uuid = $user_uuid;
+		if (!empty($user_uuid)) {
+			$message->user_uuids = [$user_uuid];
 		}
 		$group_uuid = $result['group_uuid'] ?? null;
 		if (!empty($group_uuid) && is_uuid($group_uuid)) {
