@@ -61,66 +61,13 @@ class opensms {
 		return $cidrs;
 	}
 
-	public static function add_acl_cidrs(database $database, string $access_control_uuid, array $cidrs, string $description): void {
-		foreach ($cidrs as $cidr) {
-			$array['access_control_nodes'][] = [
-				'access_control_node_uuid' => uuid(),
-				'access_control_uuid' => $access_control_uuid,
-				'node_type' => 'allow',
-				'node_cidr' => $cidr,
-				'node_description' => $description,
-			];
-		}
-		$database->save($array);
-	}
-
 	/**
-	 * Retrieves messages from multiple SMS adapters
+	 * Add CIDR blocks to an access control list
 	 *
-	 * @param array $adapters An array of SMS adapter instances to query for messages
-	 * @param settings $settings The settings object containing configuration parameters
-	 * @return array Returns an array of messages retrieved from all adapters
-	 */
-	public static function messages(array $adapters, settings $settings): array {
-		$messages = [];
-		// Iterate through each adapter class
-		/** @var opensms_message_adapter $adapter_class */
-		foreach ($adapters as $adapter_class) {
-			// Process any request that is valid for the adapter
-			if ($adapter_class::has($settings, $_SERVER['REMOTE_ADDR'])) {
-				// Create the adapter instance
-				/** @var opensms_message_adapter $adapter */
-				$adapter = new $adapter_class();
-
-				// Call the adapter to parse the message
-				$message = $adapter->parse($settings);
-
-				// adapters must make sure to return to_number and from_number
-				if (empty($message->to_number) || empty($message->from_number)) {
-					// Parse error, skip to next adapter
-					continue;
-				}
-
-				// Do not exit the loop, in case multiple adapters match
-				$messages[] = $message;
-			}
-		}
-		return $messages;
-	}
-
-	/**
-	 * Notify registered listeners about an opensms_message.
-	 *
-	 * Dispatches the provided opensms_message to each listener in the $listeners
-	 * array. Each listener is expected to be a callable or an object implementing
-	 * the appropriate listener contract and will be invoked with the message as
-	 * its argument. Listeners are invoked in the order they appear in the array.
-	 *
-	 * @param opensms_message $message The message to be delivered to listeners.
-	 * @param array $listeners Array of listeners to notify. Each element should be
-	 *                         a callable or an object implementing the listener
-	 *                         interface/contract.
-	 *
+	 * @param database $database The database connection instance
+	 * @param string $access_control_uuid The UUID of the access control list to add CIDRs to
+	 * @param array $cidrs Array of CIDR notation IP address ranges to be added
+	 * @param string $description Description for the CIDR entries being added
 	 * @return void
 	 *
 	 * @throws \InvalidArgumentException If $listeners contains invalid entries.
