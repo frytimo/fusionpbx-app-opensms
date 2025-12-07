@@ -29,13 +29,15 @@ class message_modifier_020_profile implements opensms_message_modifier {
 		}
 
 		// Retrieve the SIP profile from settings
-		foreach ($extensions as $extension) {
+		foreach ($extensions as $extension_array) {
+			$extension = $extension_array['extension'];
+			$domain_name = $extension_array['domain_name'];
 			$command = "sofia_contact $extension@$domain_name";
 			$response = $event_socket->command("api $command");
 			if ($response != 'error/user_not_registered') {
 				$sip_profile = explode("/", $response)[1];
 				// Assign the SIP profile to the message
-				$message->sip_profile = $sip_profile;
+				$message->broadcast_destinations[] = "$extension@$domain_name";
 			}
 		}
 	}

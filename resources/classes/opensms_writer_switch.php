@@ -35,20 +35,38 @@ class opensms_writer_switch implements opensms_message_listener {
 
 		$sip_profile = $message->sip_profile ?? 'internal';
 
-		//send the SIP message to the switch
-		$event = "sendevent CUSTOM\n";
-		$event .= "Event-Subclass: SMS::SEND_MESSAGE\n";
-		$event .= "proto: sip\n";
-		$event .= "dest_proto: sip\n";
-		$event .= "from: ".$message->from_number."\n";
-		$event .= "from_full: sip:".$message->from_number."\n";
-		$event .= "to: ".$message->to_number."\n";
-		$event .= "subject: sip:".$message->to_number."\n";
-		$event .= "type: text/plain\n";
-		//$event .= "hint: the hint\n";
-		$event .= "replying: true\n";
-		$event .= "sip_profile: ".$sip_profile."\n";
-		$event .= "_body: ". $message->sms;
+		foreach ($message->broadcast_destinations as $destination) {
+			//send the SIP message to the switch
+			$event = "sendevent CUSTOM\n";
+			$event .= "Event-Subclass: SMS::SEND_MESSAGE\n";
+			$event .= "proto: sip\n";
+			$event .= "dest_proto: sip\n";
+			$event .= "from: ".$message->from_number."\n";
+			$event .= "from_full: sip:".$message->from_number."\n";
+			$event .= "to: $destination\n";
+			$event .= "subject: sip:".$message->to_number."\n";
+			$event .= "type: text/plain\n";
+			//$event .= "hint: the hint\n";
+			$event .= "replying: true\n";
+			$event .= "sip_profile: ".$sip_profile."\n";
+			$event .= "_body: ". $message->sms;
+
+			$event_socket->request($event);
+		}
+		// //send the SIP message to the switch
+		// $event = "sendevent CUSTOM\n";
+		// $event .= "Event-Subclass: SMS::SEND_MESSAGE\n";
+		// $event .= "proto: sip\n";
+		// $event .= "dest_proto: sip\n";
+		// $event .= "from: ".$message->from_number."\n";
+		// $event .= "from_full: sip:".$message->from_number."\n";
+		// $event .= "to: 110@fusionpbx.timfry.ca\n";
+		// $event .= "subject: sip:".$message->to_number."\n";
+		// $event .= "type: text/plain\n";
+		// //$event .= "hint: the hint\n";
+		// $event .= "replying: true\n";
+		// $event .= "sip_profile: ".$sip_profile."\n";
+		// $event .= "_body: ". $message->sms;
 
 		event_socket::command($event);
 	}

@@ -116,13 +116,47 @@ class opensms_message {
 	 */
 	public $domain_name;
 
+	/**
+	 * @var string The unique identifier for the message destination
+	 */
 	public $destination_uuid;
 
+	/**
+	 * The UUID of the user associated with the message
+	 *
+	 * @var string
+	 */
 	public $user_uuid;
 
+	/**
+	 * The unique identifier for the message group
+	 * @var string|null
+	 */
 	public $group_uuid;
 
+	/**
+	 * Stores the message fields/properties
+	 *
+	 * @var array Array containing message field data
+	 */
 	private $fields;
+
+	/**
+	 * Stores the destination addresses for broadcast messages
+	 *
+	 * @var array Array of destination phone numbers or addresses for broadcasting messages
+	 */
+	public $broadcast_destinations;
+
+	/**
+	 * Array of offline message destinations
+	 *
+	 * Stores the destinations where messages should be delivered when the primary
+	 * destination is offline or unavailable.
+	 *
+	 * @var array
+	 */
+	public $offline_destinations;
 
 	/**
 	 * Construct a new OpenSMS message instance.
@@ -151,22 +185,50 @@ class opensms_message {
 		$this->sip_profile = $sip_profile;
 		$this->fields = [];
 		$this->domain_name = $domain_name;
+		$this->broadcast_destinations = [];
+		$this->offline_destinations = [];
 	}
 
+	/**
+	 * Set a field value for the message object
+	 *
+	 * @param string $field_name The name of the field to set
+	 * @param mixed $value The value to assign to the field
+	 * @return void
+	 */
 	public function set_field(string $field_name, $value): void {
 		$this->fields[$field_name] = $value;
 	}
 
+	/**
+	 * Retrieves the value of a specified field
+	 *
+	 * @param string $field_name The name of the field to retrieve
+	 * @return mixed The value of the specified field
+	 */
 	public function get_field(string $field_name) {
 		return $this->fields[$field_name] ?? null;
 	}
 
+	/**
+	 * Get the fields for the OpenSMS message
+	 *
+	 * Retrieves an array of fields that are associated with or required for
+	 * OpenSMS message operations.
+	 *
+	 * @return array An array containing the message fields
+	 */
 	public function get_fields(): array {
 		return $this->fields;
 	}
 
+	/**
+	 * Check if a specific field exists in the message object
+	 *
+	 * @param string $field_name The name of the field to check for existence
+	 * @return bool Returns true if the field exists, false otherwise
+	 */
 	public function has_field(string $field_name): bool {
 		return isset($this->fields[$field_name]);
 	}
-
 }
