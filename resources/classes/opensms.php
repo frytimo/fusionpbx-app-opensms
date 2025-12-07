@@ -89,6 +89,45 @@ class opensms {
 	}
 
 	/**
+	 * Retrieves messages from multiple SMS adapters
+	 *
+	 *
+	 *
+	 *
+	 *
+	 * @param array $adapters An array of SMS adapter instances to query for messages
+	 *
+	 *
+	 * @param settings $settings The settings object containing configuration parameters
+	 *
+	 *
+	 * @return array Returns an array of messages retrieved from all adapters
+	 */
+	public static function messages(array $adapters, settings $settings): array {
+		$messages = [];
+		// Iterate through each adapter class
+		/** @var opensms_message_adapter $adapter_class */
+		foreach ($adapters as $adapter_class) {
+			// Process any request that is valid for the adapter
+			if ($adapter_class::has($settings, $_SERVER['REMOTE_ADDR'])) {
+				// Create the adapter instance
+				/** @var opensms_message_adapter $adapter */
+				$adapter = new $adapter_class();
+				// Call the adapter to parse the message
+				$message = $adapter->parse($settings);
+				// adapters must make sure to return to_number and from_number
+				if (empty($message->to_number) || empty($message->from_number)) {
+					// Parse error, skip to next adapter
+					continue;
+				}
+				// Do not exit the loop, in case multiple adapters match
+				$messages[] = $message;
+			}
+		}
+		return $messages;
+	}
+
+	/**
 	 * Notifies all listeners with the opensms_message object
 	 *
 	 * This method should be called after the message modifiers to ensure there is a complete message
