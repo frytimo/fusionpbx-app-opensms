@@ -12,10 +12,10 @@ if ($domains_processed === 1) {
 	}
 
 	// Get the list of providers
-	$providers = $auto_loader->get_interface_list('opensms_provider');
+	$adapters = $auto_loader->get_interface_list('opensms_message_adapter');
 
 	// Call app_defaults for each provider
-	foreach ($providers as $provider_class) {
-		$provider_class::app_defaults($database);
+	foreach ($adapters as $adapter_class) {
+		$adapter_class::app_defaults($database);
 	}
 }

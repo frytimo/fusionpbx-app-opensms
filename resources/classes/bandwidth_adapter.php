@@ -59,7 +59,7 @@ class bandwidth_adapter implements opensms_message_adapter {
 	 * arising from validation, transport, or response processing.
 	 *
 	 * @param settings $settings Configuration container providing global default settings.
-	 * 
+	 *
 	 * @return opensms_message The processed opensms_message object on success, or null if no message was processed.
 	 * @throws \Exception If configuration is invalid, request preparation fails,
 	 *                    the HTTP request fails, or the provider returns an error.
@@ -129,11 +129,12 @@ class bandwidth_adapter implements opensms_message_adapter {
 
 	private function process_mms(array $mms): array {
 		$media_files = [];
+		$username = $this->settings->get(self::OPENSMS_PROVIDER_NAME, 'callback_user_id', '');
+		$password = $this->settings->get(self::OPENSMS_PROVIDER_NAME, 'callback_password', '');
 		// Handle MMS media links
 		foreach ($mms as $media_link) {
 			$curl_client = new curl_client();
-			$response = $curl_client->get($media_link);
-			$response = ['error' => 'invalid url']; // testing
+			$response = $curl_client->get($media_link, [], $username, $password);
 			if (!empty($response['error'])) {
 				// Log error and continue
 				echo "Error fetching media from Bandwidth: " . $response['error'] . "\n";
@@ -155,6 +156,7 @@ class bandwidth_adapter implements opensms_message_adapter {
 	 * specific to the SMS provider integration.
 	 *
 	 * @param settings $settings Configuration container providing options for this instance.
+	 *
 	 * @return void
 	 * @throws \InvalidArgumentException If the provided settings contain invalid or missing values.
 	 * @throws \TypeError If a non-settings value is passed (enforced by the method signature).

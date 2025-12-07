@@ -16,11 +16,11 @@
 	$auto_loader->reload_classes();
 
 //configuration from sub apps
-	$opensms_providers = $auto_loader->get_interface_list('opensms_provider');
-	foreach ($opensms_providers as $provider_class) {
+	$adapters = $auto_loader->get_interface_list('opensms_message_adapter');
+	foreach ($adapters as $adapter_class) {
         // $x is declared in caller and must not be declared here
         /** @var int $x */
-        $opensms_config = $provider_class::app_config();
+        $opensms_config = $adapter_class::app_config();
         if ($opensms_config !== null) {
             $apps[$x] = $opensms_config;
             $x++;
