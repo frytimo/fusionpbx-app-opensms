@@ -1,7 +1,6 @@
 <?php
 
 class opensms {
-	
 	/**
 	 * Check if the current user has ACL permissions for a specific message
 	 *
@@ -37,9 +36,9 @@ class opensms {
 	 */
 	public static function create_access_control(database $database, string $access_control_uuid, string $name, string $description): void {
 		$array['access_controls'][] = [
-			'access_control_uuid'        => $access_control_uuid,
-			'access_control_name'        => $name,
-			'access_control_default'     => 'deny',
+			'access_control_uuid' => $access_control_uuid,
+			'access_control_name' => $name,
+			'access_control_default' => 'deny',
 			'access_control_description' => $description,
 		];
 		$database->save($array);
