@@ -61,6 +61,19 @@ class opensms {
 		return $cidrs;
 	}
 
+	public static function add_acl_cidrs(database $database, string $access_control_uuid, array $cidrs, string $description): void {
+		foreach ($cidrs as $cidr) {
+			$array['access_control_nodes'][] = [
+				'access_control_node_uuid' => uuid(),
+				'access_control_uuid' => $access_control_uuid,
+				'node_type' => 'allow',
+				'node_cidr' => $cidr,
+				'node_description' => $description,
+			];
+		}
+		$database->save($array);
+	}
+
 	/**
 	 * Retrieves messages from multiple SMS adapters
 	 *
