@@ -23,7 +23,29 @@ class bandwidth_adapter implements opensms_message_adapter {
 		'52.72.24.132/32',
 	];
 
+	/** @var settings */
 	protected $settings;
+
+	/** @var string */
+	protected $time;
+
+	/** @var string */
+	protected $to_number;
+
+	/** @var string */
+	protected $from_number;
+
+	/** @var string */
+	protected $sms;
+
+	/** @var array|null */
+	protected $mms;
+
+	/** @var string|null */
+	protected $type;
+
+	/** @var string|null */
+	protected $received_data;
 
 	/**
 	 * Determine whether the given IP address is present/allowed in the provided Bandwidth OpenSMS settings.
@@ -48,6 +70,87 @@ class bandwidth_adapter implements opensms_message_adapter {
 	}
 
 	/**
+	 * Get the SMS message body text.
+	 *
+	 * @return string|null The SMS message body text, or null if not set.
+	 */
+	public function get_sms(): ?string {
+		return $this->sms;
+	}
+
+	/**
+	 * Get the MMS attachments as an array.
+	 *
+	 * @return array|null The array of MMS attachments, or null if none are present.
+	 */
+	public function get_mms(): ?array {
+		return $this->mms;
+	}
+
+	/**
+	 * Get the message type (e.g., 'sms' or 'mms').
+	 *
+	 * @return string|null The message type, or null if not set.
+	 */
+	public function get_type(): ?string {
+		return $this->type;
+	}
+
+	/**
+	 * Get the recipient's phone number.
+	 *
+	 * @return string The recipient's phone number, or null if not set.
+	 */
+	public function get_to_number(): string {
+		return $this->to_number;
+	}
+
+	/**
+	 * Get the sender's phone number.
+	 *
+	 * @return string The sender's phone number, or null if not set.
+	 */
+	public function get_from_number(): string {
+		return $this->from_number;
+	}
+
+	/**
+	 * Get the time associated with the message.
+	 *
+	 * @return string|null The time as a string, or null if not set.
+	 */
+	public function get_time(): ?string {
+		return $this->time;
+	}
+
+	/**
+	 * Get the provider UUID.
+	 *
+	 * @return string The UUID of the provider.
+	 */
+	public function get_provider_uuid(): string {
+		return self::OPENSMS_PROVIDER_UUID;
+	}
+
+	/**
+	 * Get the provider name.
+	 *
+	 * @return string The name of the provider.
+	 */
+	public function get_provider_name(): string {
+		return self::OPENSMS_PROVIDER_NAME;
+	}
+
+	/**
+	 * Get the raw data received from Bandwidth.
+	 *
+	 * @return string|null The raw data as a string, or null if no data was received.
+	 */
+	public function get_received_data(): ?string {
+		return $this->received_data;
+	}
+
+	/**
 	 * Process the Bandwidth OpenSMS transaction.
 	 *
 	 * Validates provider configuration and message data, builds and sends the
@@ -65,48 +168,50 @@ class bandwidth_adapter implements opensms_message_adapter {
 	 *                    the HTTP request fails, or the provider returns an error.
 	 * @access public
 	 */
-	public function parse(settings $settings): opensms_message {
+	public function receive(settings $settings, object $payload): ?opensms_message {
 
 		$this->settings = $settings;
 
-		// Process JSON payload from Bandwidth
-		$json_string = file_get_contents('php://input');
+		// Use the provided payload object; adapters should not read php://input directly.
+		if (method_exists($payload, 'isEmpty') && $payload->isEmpty()) {
+			return null;
+		}
+
+		$json_string = method_exists($payload, 'raw') ? $payload->raw() : (string)$payload;
 		$json_array = json_decode($json_string, true);
 		if (json_last_error() !== JSON_ERROR_NONE) {
 			throw new \Exception("Invalid JSON payload received from Bandwidth");
 		}
 
-		$to_number = '';
-		$from_number = '';
-		$sms = '';
-		$time = '';
-		$mms = [];
+		// Store the received data
+		$this->received_data = $json_string;
 
 		// Process 'time' if present
 		if (isset($json_array[0]['message']['time'])) {
 			// Validate 'time' format
-			$time = $json_array[0]['message']['time'];
+			$this->time = $json_array[0]['message']['time'];
 			// Further validation can be added here
 		}
 
 		// Process 'to' if present
 		if (isset($json_array[0]['message']['to'][0])) {
 			// Validate 'to' number
-			$to_number = $json_array[0]['message']['to'][0];
+			$this->to_number = $json_array[0]['message']['to'][0];
 			// Further validation can be added here
 		}
 
 		// Process 'from' if present
 		if (isset($json_array[0]['message']['from'])) {
 			// Validate 'from' number
-			$from_number = $json_array[0]['message']['from'];
+			$this->from_number = $json_array[0]['message']['from'];
 			// Further validation can be added here
 		}
 
 		// Process 'text' if present
 		if (isset($json_array[0]['message']['text'])) {
 			// Process SMS message
-			$sms = $this->process_sms($json_array);
+			$this->sms = $this->process_sms($json_array);
+			$this->type = 'sms';
 		}
 
 		// Process MMS media if present
@@ -114,10 +219,16 @@ class bandwidth_adapter implements opensms_message_adapter {
 			$links = $json_array[0]['message']['media'];
 			// Check for MMS messages
 			if (!empty($links)) {
-				$mms = $this->process_mms($links);
+				$this->mms = $this->process_mms($links);
+				$this->type = 'mms';
 			}
 		}
-		return new opensms_message($to_number, $from_number, $sms, $mms, $time);
+
+		// No modifications are made to the message object here
+		// Instead, we simply return a new opensms_message instance because
+		// the message data is stored in this adapter's properties.
+		// The caller will use the adapter's getters to access the data.
+		return new opensms_message(uuid(), self::OPENSMS_PROVIDER_UUID);
 	}
 
 	private function process_sms(array $json_array): string {
@@ -190,6 +301,13 @@ class bandwidth_adapter implements opensms_message_adapter {
 		$defaults['default_settings'][$y]['default_setting_uuid'] = '67d9116a-ea25-4494-93c1-ad5f56da968b';
 		$defaults['default_settings'][$y]['default_setting_category'] = self::OPENSMS_PROVIDER_NAME;
 		$defaults['default_settings'][$y]['default_setting_subcategory'] = 'callback_password';
+		$defaults['default_settings'][$y]['default_setting_name'] = 'text';
+		$defaults['default_settings'][$y]['default_setting_value'] = '';
+		$defaults['default_settings'][$y]['default_setting_enabled'] = 'false';
+		$y++;
+		$defaults['default_settings'][$y]['default_setting_uuid'] = '9922e56a-ef2a-4cd1-bd66-37fe8e8e3392';
+		$defaults['default_settings'][$y]['default_setting_category'] = self::OPENSMS_PROVIDER_NAME;
+		$defaults['default_settings'][$y]['default_setting_subcategory'] = 'application_id';
 		$defaults['default_settings'][$y]['default_setting_name'] = 'text';
 		$defaults['default_settings'][$y]['default_setting_value'] = '';
 		$defaults['default_settings'][$y]['default_setting_enabled'] = 'false';

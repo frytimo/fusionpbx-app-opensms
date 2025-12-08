@@ -6,7 +6,7 @@
  * This class implements the opensms_message_modifier interface to assign
  * the SIP profile to an opensms_message based on configuration settings.
  */
-class message_modifier_020_profile implements opensms_message_modifier {
+class modifier_profile implements opensms_message_modifier {
 	/**
 	 * Assign the SIP profile to the opensms_message based on settings.
 	 *
@@ -18,7 +18,7 @@ class message_modifier_020_profile implements opensms_message_modifier {
 	 * @param opensms_message $message  The message object to update with the SIP profile.
 	 * @return void
 	 */
-	public function modify(settings $settings, opensms_message $message): void {
+	public function __invoke(settings $settings, opensms_message $message): void {
 		$extensions = $message->extensions ?? null;
 		$domain_name = $message->domain_name ?? null;
 
@@ -40,5 +40,9 @@ class message_modifier_020_profile implements opensms_message_modifier {
 				$message->broadcast_destinations[] = "$extension@$domain_name";
 			}
 		}
+	}
+
+	public function priority(): int {
+		return 20; // Priority after extensions
 	}
 }

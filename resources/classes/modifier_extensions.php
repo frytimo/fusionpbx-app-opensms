@@ -1,12 +1,12 @@
 <?php
 
 /**
- * Class message_modifier_010_extensions
+ * Class modifier_extensions
  *
  * This class implements the opensms_message_modifier interface to resolve and assign
  * extensions for the user and group UUIDs stored in the opensms_message.
  */
-class message_modifier_010_extensions implements opensms_message_modifier {
+class modifier_extensions implements opensms_message_modifier {
 	/**
 	 * Resolve and assign extensions for user UUIDs referenced by an opensms_message.
 	 *
@@ -26,7 +26,7 @@ class message_modifier_010_extensions implements opensms_message_modifier {
 	 * @throws \Exception If required data is missing or an application-level error occurs during processing.
 	 *                   Database-related errors during lookup may also be propagated as exceptions.
 	 */
-	public function modify(settings $settings, opensms_message $message): void {
+	public function __invoke(settings $settings, opensms_message $message): void {
 
         // Get the database connection from settings
         $database = $settings->database();
@@ -50,5 +50,9 @@ class message_modifier_010_extensions implements opensms_message_modifier {
             $message->extensions = $extensions;
 		}
 		return;
+	}
+
+	public function priority(): int {
+		return 10; // high priority (runs early)
 	}
 }

@@ -25,7 +25,61 @@ interface opensms_message_adapter {
 	 *                                   unexpected type.
 	 * @throws \RuntimeException         For unrecoverable parsing/decoding errors.
 	 */
-	public function parse(settings $settings): ?opensms_message;
+	/**
+	 * @param settings $settings
+	 * @param object $payload An object provided by a consumer (see `opensms_consumer_payload`).
+	 * @return opensms_message|null
+	 */
+	public function receive(settings $settings, object $payload): ?opensms_message;
+
+	/**
+	 * Get the recipient's phone number.
+	 *
+	 * @return string The recipient's phone number, or null if not set.
+	 */
+	public function get_to_number(): string;
+
+	/**
+	 * Get the sender's phone number.
+	 *
+	 * @return string The sender's phone number, or null if not set.
+	 */
+	public function get_from_number(): string;
+
+	/**
+	 * Get the message time as a string.
+	 *
+	 * @return string|null The message time, or null if not set.
+	 */
+	public function get_time(): ?string;
+
+	/**
+	 * Get the SMS message body text.
+	 *
+	 * @return string|null The SMS message body text, or null if not set.
+	 */
+	public function get_sms(): ?string;
+
+	/**
+	 * Get the MMS attachments associated with the message.
+	 *
+	 * @return array|null An array of MMS attachments, or null if there are none.
+	 */
+	public function get_mms(): ?array;
+
+	/**
+	 * Get the message type (e.g., 'sms', 'mms').
+	 *
+	 * @return string|null The message type, or null if not set.
+	 */
+	public function get_type(): ?string;
+
+	/**
+	 * Get the raw received data from the provider.
+	 *
+	 * @return string|null The raw data as a string, or null if no data was received.
+	 */
+	public function get_received_data(): ?string;
 
 	/**
 	 * Determine if the provider should handle the request based on the IP address.

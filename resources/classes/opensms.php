@@ -96,8 +96,13 @@ class opensms {
 	 *
 	 * @return array Returns an array of messages retrieved from all adapters
 	 */
-	public static function messages(array $adapters, settings $settings): array {
+	public static function messages(array $adapters, settings $settings, ?object $payload = null): array {
 		$messages = [];
+
+		// Ensure we always pass a payload object to adapters (may be empty).
+		if ($payload === null) {
+			$payload = new opensms_consumer_payload('');
+		}
 		// Iterate through each adapter class
 		/** @var opensms_message_adapter $adapter_class */
 		foreach ($adapters as $adapter_class) {
@@ -106,13 +111,28 @@ class opensms {
 				// Create the adapter instance
 				/** @var opensms_message_adapter $adapter */
 				$adapter = new $adapter_class();
-				// Call the adapter to parse the message
-				$message = $adapter->parse($settings);
+
+				// Call the adapter to parse the message (may return null if adapter has nothing to process)
+				$message = $adapter->receive($settings, $payload);
+				if ($message === null) {
+					// Adapter had no message to process
+					continue;
+				}
+
+				// Populate standard fields
+				$message->to_number = $adapter->get_to_number();
+				$message->from_number = $adapter->get_from_number();
+				$message->time = $adapter->get_time();
+				$message->sms = $adapter->get_sms();
+				$message->mms = $adapter->get_mms();
+				$message->type = $adapter->get_type();
+
 				// adapters must make sure to return to_number and from_number
 				if (empty($message->to_number) || empty($message->from_number)) {
 					// Parse error, skip to next adapter
 					continue;
 				}
+
 				// Do not exit the loop, in case multiple adapters match
 				$messages[] = $message;
 			}
@@ -120,61 +140,127 @@ class opensms {
 		return $messages;
 	}
 
-	/**
-	 * Notifies all listeners with the opensms_message object
-	 *
-	 * This method should be called after the message modifiers to ensure there is a complete message
-	 *
-	 * @param array $listeners
-	 * @param settings $settings
-	 * @param opensms_message $message
-	 * @return void
-	 */
-	public static function notify(array $listeners, settings $settings, opensms_message $message): void {
-		foreach ($listeners as $class_name) {
-			/** @var opensms_message_listener $listener */
-			$listener = new $class_name();
-			if ($listener instanceof opensms_message_listener) {
-				$listener->on_message($settings, $message);
+	public static function build_consumer_chain(array $consumers): opensms_message_consumer {
+		$instances = [];
+
+		// Validate consumer classes
+		foreach ($consumers as $class) {
+			$instance = new $class();
+			if (!($instance instanceof opensms_message_consumer)) {
+				throw new InvalidArgumentException("Consumer class $class does not implement opensms_message_consumer");
 			}
+			$instances[] = $instance;
 		}
+
+		$chain = new class($instances) implements opensms_message_consumer {
+			private $consumers;
+
+			public function __construct(array $consumers) {
+				$this->consumers = $consumers;
+			}
+
+			public function __invoke(settings $settings): ?string {
+				foreach ($this->consumers as $consume) {
+					$payload = $consume($settings);
+					if (!empty($payload)) {
+						return $payload;
+					}
+				}
+				return null;
+			}
+		};
+
+		return $chain;
 	}
 
 	/**
-	 * Modify an OpenSMS message using the provided modifiers and settings.
+	 * Builds a chain of message modifiers from an array of modifier configurations
 	 *
-	 * Applies each modifier in $modifiers (in the order provided) to the given $message
-	 * instance. Modifications may include changing the message body, recipients,
-	 * metadata, delivery flags, templates, or other message properties. The method
-	 * mutates the $message object in-place and does not return a value.
+	 * This method creates a chain of responsibility pattern implementation for message
+	 * modification. Each modifier in the chain can process the message and pass it to
+	 * the next modifier.
 	 *
-	 * Expected modifier forms (implementation-dependent, examples):
-	 *  - callable: function(settings $settings, opensms_message $message): void
-	 *  - associative array describing the change (e.g. ['field' => 'body', 'action' => 'append', 'value' => '...'])
-	 *  - string key referencing a predefined modifier
-	 *
-	 * Order of execution matters: later modifiers can override or augment earlier ones.
-	 *
-	 * @param array $modifiers   Array of modifier definitions (callables, arrays, or keys).
-	 * @param settings $settings Configuration/settings object used when applying modifiers.
-	 * @param opensms_message $message The message object to be modified (mutated in-place).
-	 *
-	 * @return void
-	 *
-	 * @throws \InvalidArgumentException If a modifier has an invalid format or unsupported type.
-	 * @throws \RuntimeException If a modifier fails during processing.
+	 * @param array $modifiers An array of modifier configurations used to build the chain
+	 * @return opensms_message_modifier The first modifier in the chain, which can be used
+	 *                                   to process messages through the entire chain
 	 */
-	public static function modify(array $modifiers, settings $settings, opensms_message $message): void {
-		// Sort to ensure dependency order
-		sort($modifiers);
+	public static function build_modifier_chain(array $modifiers): opensms_message_modifier {
 
-		// Call each modifier to edit the message
-		foreach ($modifiers as $modifier_class) {
-			/** @var opensms_message_modifier $modifier */
-			$modifier = new $modifier_class();
-			if ($modifier instanceof opensms_message_modifier) {
-				$modifier->modify($settings, $message);
+		$instances = [];
+
+		// Validate modifier classes
+		foreach ($modifiers as $class) {
+			$instance = new $class();
+			if (!($instance instanceof opensms_message_modifier)) {
+				throw new InvalidArgumentException("Modifier class $class does not implement opensms_message_modifier");
 			}
+			$instances[] = $instance;
 		}
+
+		// Sort by priority (lower = earlier)
+		usort($instances, function ($a, $b) {
+			return $a->priority() <=> $b->priority();
+		});
+
+		$chain = new class($instances) implements opensms_message_modifier {
+			private $modifiers;
+
+			public function __construct(array $modifiers) {
+				$this->modifiers = $modifiers;
+			}
+
+			public function __invoke(settings $settings, opensms_message $message): void {
+				foreach ($this->modifiers as $modifier) {
+					$modifier($settings, $message);
+				}
+			}
+
+			public function priority(): int {
+				return -1;  // build chain has to run before any other modifier
+			}
+		};
+
+		return $chain;
+	}
+
+	/**
+	 * Builds a chain of message listeners based on the provided listeners
+	 *
+	 * This method creates and configures a chain of opensms_message_listener objects
+	 * according to the listeners array. Each listener in the array is used to construct
+	 * and link listeners in a chain of responsibility pattern.
+	 *
+	 * @param array $listeners An array of listener configurations used to build the listener chain
+	 *
+	 * @return opensms_message_listener The first listener in the constructed listener chain
+	 */
+	public static function build_listener_chain(array $listeners): opensms_message_listener {
+
+		$instances = [];
+
+		// Validate modifier classes
+		foreach ($listeners as $class) {
+			$instance = new $class();
+			if (!($instance instanceof opensms_message_listener)) {
+				throw new InvalidArgumentException("Modifier class $class does not implement opensms_message_listener");
+			}
+			$instances[] = $instance;
+		}
+
+		$chain = new class($instances) implements opensms_message_listener {
+			private $listeners;
+
+			public function __construct(array $listeners) {
+				$this->listeners = $listeners;
+			}
+
+			public function __invoke(settings $settings, opensms_message $message): void {
+				foreach ($this->listeners as $listener) {
+					$listener($settings, $message);
+				}
+			}
+		};
+
+		return $chain;
 	}
 }

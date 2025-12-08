@@ -33,5 +33,13 @@ interface opensms_message_modifier {
 	 *                                   message is in an invalid state that cannot
 	 *                                   be corrected by this modifier.
 	 */
-	public function modify(settings $settings, opensms_message $message): void;
+	public function __invoke(settings $settings, opensms_message $message): void;
+
+	/**
+	 * Priority for ordering (lower = runs earlier).
+	 * Default should be 100.
+	 *
+	 * @return int
+	 */
+	public function priority(): int;
 }

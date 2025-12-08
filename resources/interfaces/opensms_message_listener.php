@@ -16,5 +16,5 @@ interface opensms_message_listener {
 	 * @throws \InvalidArgumentException If the provided message is malformed or missing required data.
 	 * @throws \RuntimeException         If processing cannot be completed due to runtime errors (I/O, network, etc.).
 	 */
-	public function on_message(settings $settings, opensms_message $message): void;
+	public function __invoke(settings $settings, opensms_message $message): void;
 }

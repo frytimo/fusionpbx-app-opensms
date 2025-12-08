@@ -9,6 +9,27 @@
  * @author Tim Fry
  */
 class opensms_message {
+
+	/**
+	 * The unique identifier for the OpenSMS message.
+	 *
+	 * This UUID uniquely identifies the message within the OpenSMS system.
+	 * It should be a valid UUID string (for example: "550e8400-e29b-41d4-a716-446655440000").
+	 *
+	 * @var string
+	 */
+	public $uuid;
+
+	/**
+	 * The unique identifier for the message provider.
+	 *
+	 * This UUID identifies the messaging provider associated with this message.
+	 * It should be a valid UUID string corresponding to a provider in the system.
+	 *
+	 * @var string
+	 */
+	public $provider_uuid;
+
 	/**
 	 * The recipient phone number for the outgoing SMS message.
 	 *
@@ -59,6 +80,13 @@ class opensms_message {
 	 * @var array<int,array<string,mixed>>
 	 */
 	public $mms;
+
+	/**
+	 * The message type (e.g., "sms", "mms").
+	 *
+	 * @var string
+	 */
+	public $type;
 
 	/**
 	 * Message timestamp.
@@ -117,6 +145,13 @@ class opensms_message {
 	public $domain_name;
 
 	/**
+	 * The unique identifier for the domain associated with the message
+	 *
+	 * @var string
+	 */
+	public $domain_uuid;
+
+	/**
 	 * @var string The unique identifier for the message destination
 	 */
 	public $destination_uuid;
@@ -130,9 +165,15 @@ class opensms_message {
 
 	/**
 	 * The unique identifier for the message group
-	 * @var string|null
+	 * @var string
 	 */
 	public $group_uuid;
+
+	/**
+	 * The unique identifier for the contact associated with the message
+	 * @var string
+	 */
+	public $contact_uuid;
 
 	/**
 	 * Stores the message fields/properties
@@ -140,6 +181,13 @@ class opensms_message {
 	 * @var array Array containing message field data
 	 */
 	private $fields;
+
+	/**
+	 * Raw data received from the OpenSMS provider
+	 *
+	 * @var string Raw payload/data received from OpenSMS
+	 */
+	public $received_data;
 
 	/**
 	 * Stores the destination addresses for broadcast messages
@@ -164,46 +212,87 @@ class opensms_message {
 	 * Initializes a message with recipient/sender information, message content,
 	 * optional media attachments, scheduling, associated users, and delivery options.
 	 *
-	 * @param string $to_number   Recipient phone number (e.g. in international format).
-	 * @param string $from_number Sender phone number.
-	 * @param string $sms         SMS message body text.
-	 * @param array  $mms         Optional array of MMS attachments (URLs or file paths).
-	 * @param string $time        Optional send time as a string (e.g. ISO 8601 or Unix timestamp). Empty to send immediately.
-	 * @param array  $user_uuids  Optional array of user UUIDs associated with this message.
-	 * @param array  $extensions  Optional associative array of extension data / metadata.
-	 * @param string $sip_profile SIP profile to use for sending (defaults to 'internal').
-	 * @param string $domain_name Domain name associated with the message (optional).
+	 * @param string $uuid          The unique identifier for the message.
+	 * @param string $provider_uuid The unique identifier for the message provider.
+	 *
 	 */
-	public function __construct(string $to_number = '', string $from_number = '', string $sms = '', array $mms = [], string $time = '', array $user_uuids = [], array $extensions = [], string $sip_profile = 'internal', string $domain_name = '') {
-		$this->to_number = $to_number;
-		$this->from_number = $from_number;
-		$this->sms = $sms;
-		$this->mms = $mms;
-		$this->time = $time;
-		$this->user_uuids = $user_uuids;
-		$this->extensions = $extensions;
-		$this->sip_profile = $sip_profile;
+	public function __construct(string $uuid, string $provider_uuid) {
+		$this->to_number = '';
+		$this->from_number = '';
+		$this->sms = '';
+		$this->mms = [];
+		$this->time = '';
+		$this->destination_uuid = '';
+		$this->domain_uuid = '';
+		$this->user_uuids = [];
+		$this->group_uuid = '';
+		$this->contact_uuid = '';
+		$this->extensions = [];
+		$this->sip_profile = 'internal';
 		$this->fields = [];
-		$this->domain_name = $domain_name;
+		$this->domain_name = '';
 		$this->broadcast_destinations = [];
 		$this->offline_destinations = [];
+		$this->type = '';
+
+		$this->received_data = '';
+
+		$this->uuid = $uuid;
+		$this->provider_uuid = $provider_uuid;
+	}
+
+	/**
+	 * Check if the message is of type SMS
+	 *
+	 * @return bool True if the message type is 'sms', false otherwise
+	 */
+	public function is_sms(): bool {
+		return $this->type === 'sms';
+	}
+
+	/**
+	 * Check if the message is of type MMS
+	 *
+	 * @return bool True if the message type is 'mms', false otherwise
+	 */
+	public function is_mms(): bool {
+		return $this->type === 'mms';
 	}
 
 	/**
 	 * Set a field value for the message object
 	 *
 	 * @param string $field_name The name of the field to set
-	 * @param mixed $value The value to assign to the field
-	 * @return void
+	 * @param mixed  $value      The value to assign to the field
+	 *
+	 * @return opensms_message
 	 */
-	public function set_field(string $field_name, $value): void {
-		$this->fields[$field_name] = $value;
+	public function set_field(string $field_name, $value): opensms_message {
+		if (property_exists($this, $field_name) && $field_name !== 'fields') {
+			$this->{$field_name} = $value;
+		} else {
+			$this->fields[$field_name] = $value;
+		}
+		return $this;
+	}
+
+	/**
+	 * Convert the OpenSMS message object to an associative array
+	 *
+	 * @return array Associative array representation of the message object
+	 */
+	public function to_array(): array {
+		// Get the public properties of the object as an associative array
+		$array = get_object_vars($this);
+		// Return the array representation
+		return $array;
 	}
 
 	/**
 	 * Retrieves the value of a specified field
 	 *
 	 * @param string $field_name The name of the field to retrieve
+	 *
 	 * @return mixed The value of the specified field
 	 */
 	public function get_field(string $field_name) {
@@ -226,6 +315,7 @@ class opensms_message {
 	 * Check if a specific field exists in the message object
 	 *
 	 * @param string $field_name The name of the field to check for existence
+	 *
 	 * @return bool Returns true if the field exists, false otherwise
 	 */
 	public function has_field(string $field_name): bool {

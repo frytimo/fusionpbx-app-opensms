@@ -6,7 +6,7 @@
  * This class implements the opensms_message_listener interface to send incoming
  * OpenSMS messages to the switch via event socket.
  */
-class opensms_writer_switch implements opensms_message_listener {
+class opensms_message_switch_writer implements opensms_message_listener {
 
 	/**
 	 * Process the incoming OpenSMS message and send it to the switch.
@@ -17,7 +17,7 @@ class opensms_writer_switch implements opensms_message_listener {
 	 * @param opensms_message $message The message object containing SMS details.
 	 * @return void
 	 */
-	public function on_message(settings $settings, opensms_message $message): void {
+	public function __invoke(settings $settings, opensms_message $message): void {
         $config = $settings->database()->config();
 
         // Get the switch credentials from the config file and supply a default value

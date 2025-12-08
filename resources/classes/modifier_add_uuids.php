@@ -7,7 +7,7 @@
  * instance based on the destination number. It queries the database to find
  * the corresponding destination, user, and group UUIDs and assigns them to the message.
  */
-class message_modifier_005_add_uuids implements opensms_message_modifier {
+class modifier_add_uuids implements opensms_message_modifier {
 	/**
 	 * Populate the user UUID on the given opensms_message.
 	 *
@@ -19,13 +19,13 @@ class message_modifier_005_add_uuids implements opensms_message_modifier {
 	 * @param opensms_message $message The message object to update with the user's UUID.
 	 * @return void
 	 */
-	public function modify(settings $settings, opensms_message $message): void {
+	public function __invoke(settings $settings, opensms_message $message): void {
 
 		// Get the database connection from settings
 		$database = $settings->database();
 
 		// Look up the destination_uuid, user_uuid, and group_uuid based on the to_number (PSTN number)
-		$sql = "SELECT destination_uuid, user_uuid, group_uuid FROM v_destinations ";
+		$sql = "SELECT destination_uuid, user_uuid, group_uuid, domain_uuid FROM v_destinations ";
 		$sql .= "WHERE ( ";
 		$sql .= "	destination_prefix || destination_area_code || destination_number = :destination_number ";
 		$sql .= "	OR destination_trunk_prefix || destination_area_code || destination_number = :destination_number ";
@@ -58,6 +58,14 @@ class message_modifier_005_add_uuids implements opensms_message_modifier {
 		if (!empty($group_uuid) && is_uuid($group_uuid)) {
 			$message->group_uuid = $group_uuid;
 		}
+		$domain_uuid = $result['domain_uuid'] ?? null;
+		if (!empty($domain_uuid) && is_uuid($domain_uuid)) {
+			$message->domain_uuid = $domain_uuid;
+		}
 
+	}
+
+	public function priority(): int {
+		return 5; // Priority after removing plus
 	}
 }
