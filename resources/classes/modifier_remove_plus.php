@@ -20,6 +20,6 @@ class modifier_remove_plus implements opensms_message_modifier {
 	}
 
 	public function priority(): int {
-		return 0; // First priority
+		return 5;
 	}
 }
