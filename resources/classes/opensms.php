@@ -187,7 +187,7 @@ class opensms {
 		if ($success) {
 			// Build listener chain and notify
 			$notify = self::build_listener_chain($listeners);
-			$notify($settings, $message);
+			opensms_message::notify($listeners, $settings, $message);
 		}
 	}
 
