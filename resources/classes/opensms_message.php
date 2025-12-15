@@ -284,6 +284,15 @@ class opensms_message {
 	public function to_array(): array {
 		// Get the public properties of the object as an associative array
 		$array = get_object_vars($this);
+
+		// Merge in the fields array
+		foreach ($this->fields as $key => $value) {
+			// Prevent overwriting object properties because they have precedence
+			if (!isset($array[$key])) {
+				$array[$key] = $value;
+			}
+		}
+
 		// Return the array representation
 		return $array;
 	}
@@ -320,5 +329,17 @@ class opensms_message {
 	 */
 	public function has_field(string $field_name): bool {
 		return isset($this->fields[$field_name]);
+	}
+
+	public static function notify(array $listeners, settings $settings, opensms_message $message): void {
+		foreach ($listeners as $listener_class) {
+			$listener = new $listener_class();
+			try {
+				$listener->on_message($settings, $message);
+			} catch (Throwable $e) {
+				// Log the error but continue processing other listeners
+				//opensms_logger::error("OpenSMS Listener Error in " . get_class($listener) . ": " . $e->getMessage());
+			}
+		}
 	}
 }

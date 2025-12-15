@@ -1,6 +1,6 @@
 <?php
 
-class bandwidth_adapter implements opensms_message_adapter {
+class bandwidth_adapter implements opensms_message_adapter, opensms_message_router {
 
 	const app_name = 'bandwidth_opensms';
 	const app_uuid = 'c1624fd7-ab9d-4dea-9c67-5e2da74a603e';
@@ -46,6 +46,48 @@ class bandwidth_adapter implements opensms_message_adapter {
 
 	/** @var string|null */
 	protected $received_data;
+
+	/**
+	 * Route the message to the Bandwidth adapter if the message is from a Bandwidth number.
+	 *
+	 * This method checks if the message's 'to' number matches any destination numbers
+	 * associated with the Bandwidth provider in the database. If a match is found,
+	 * it returns the Bandwidth provider UUID to route the message accordingly.
+	 * If no match is found, it calls the next router in the chain if available.
+	 *
+	 * @param settings        $settings Configuration container providing global default settings.
+	 * @param opensms_message $message  The opensms_message object containing message details.
+	 * @param array           $adapters Array of available adapter class names.
+	 * @param callable|null   $next     The next router in the chain, or null if none.
+	 *
+	 * @return opensms_message_adapter|null The adapter, or null if no match.
+	 */
+	public function __invoke(settings $settings, opensms_message $message, array $adapters, ?callable $next): ?string {
+		// // Check if the message is coming from a phone number associated with Bandwidth
+		// $sql = "select reverse(concat(destination_prefix, destination_trunk, destination_area_code, destination_number)) as rev_number from v_destinations ";
+		// $sql .= "where provider_uuid = :provider_uuid ";
+		// $sql .= "and from_number in (";
+		// $numbers = opensms::reverse_number_as_array($message->to_number, 10);
+		// foreach ($numbers as $prefix) {
+		// 	$sql .= ":number_{$prefix}, ";
+		// 	$parameters["number_{$prefix}"] = $prefix;
+		// }
+		// $sql .= ") and destination_enabled = 'true' ";
+		// $parameters['provider_uuid'] = self::OPENSMS_PROVIDER_UUID;
+		// $parameters['from_number'] = strrev($message->from_number);
+		// $database = $settings->database();
+		// $result = $database->select($sql, $parameters, 'column');
+		// if (!empty($result)) {
+		// 	// Matched Bandwidth provider
+		// 	return $this;
+		// }
+
+		// // Not matched, call the next router in the chain if available
+		// if ($next !== null) {
+		// 	return $next($settings, $message);
+		// }
+		return null;
+	}
 
 	/**
 	 * Determine whether the given IP address is present/allowed in the provided Bandwidth OpenSMS settings.
@@ -231,6 +273,66 @@ class bandwidth_adapter implements opensms_message_adapter {
 		return new opensms_message(uuid(), self::OPENSMS_PROVIDER_UUID);
 	}
 
+	/**
+	 * Send an SMS or MMS message via Bandwidth OpenSMS.
+	 *
+	 * Constructs and sends the appropriate API request to Bandwidth based on
+	 * the provided opensms_message object, handling authentication, payload
+	 * formatting, response processing, and error handling.
+	 *
+	 * This method performs network I/O and has side effects (outbound HTTP requests).
+	 * Callers should be prepared to handle exceptions arising from transport or
+	 * response processing.
+	 *
+	 * @param settings        $settings Configuration container providing global default settings.
+	 * @param opensms_message $message  The opensms_message object containing message details to send.
+	 *
+	 * @return bool            True on successful send; false otherwise.
+	 * @throws \curl_exception If configuration is invalid, request preparation fails,
+	 *                         or if the API request fails.
+	 * @access public
+	 */
+	public static function send(settings $settings, opensms_message $message): bool {
+
+		// Get the Bandwidth configuration from settings
+		$account_id = $settings->get(self::OPENSMS_PROVIDER_NAME, 'account_id', '');
+		$url = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_url', "https://messaging.bandwidth.com/api/v2/{$account_id}/messages");
+		$application_id = $settings->get(self::OPENSMS_PROVIDER_NAME, 'application_id', '');
+		$api_username = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_username', '');
+		$api_password = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_password', '');
+
+		// Payload structure for Bandwidth API
+		$payload = [
+			'to' => $message->to_number,
+			'from' => $message->from_number,
+			'applicationId' => $application_id,
+			'text' => $message->sms,
+			'tag' => 'OpenSMS Message',
+		];
+
+		// Prepare the request curl client
+		$curl_client = new curl_client();
+
+		// Set options for curl POST request
+		$headers = [
+			'Content-Type: application/json',
+			'Accept: application/json',
+			'Authorization: Basic ' . base64_encode($api_username . ':' . $api_password),
+		];
+
+		// Send the POST request to Bandwidth
+		$response = $curl_client->post($url, $message->to_array(), $headers, null, null, true);
+
+		// Check for errors in the response
+		if (!empty($response['error'])) {
+			throw new curl_exception("Error sending message via Bandwidth: " . $response['error']);
+			return false;
+		}
+
+		// Assume success if we reach here
+		return true;
+	}
+
 	private function process_sms(array $json_array): string {
 		// Handle SMS message
 		$sms_text = $json_array[0]['message']['text'] ?? '';
@@ -279,6 +381,8 @@ class bandwidth_adapter implements opensms_message_adapter {
 	/**
 	 * Hook in to the app_config
 	 *
+	 * Sets the Global default configuration settings for the Bandwidth OpenSMS provider.
+	 *
 	 * @return array|null
 	 */
 	public static function app_config(): ?array {
@@ -315,13 +419,10 @@ class bandwidth_adapter implements opensms_message_adapter {
 	}
 
 	/**
-	 * Initialize or ensure application default settings for the Bandwidth OpenSMS integration.
+	 * Inject a provider entry into the v_providers table if it does not already exist by hooking into app_defaults.
 	 *
-	 * This static method is responsible for creating, updating, or validating the persistent
-	 * default configuration values required by the OpenSMS (Bandwidth) app. It uses the
-	 * provided database abstraction to read existing settings and to insert or update the
-	 * necessary records (for example API credentials, endpoints, routing options, timeouts,
-	 * and any feature flags required by the integration).
+	 * Outgoing SMS messages must have a route available based on a link between provider and adapter. Assigning
+	 * a provider here ensures that the Bandwidth adapter has a valid provider to link to the destination number.
 	 *
 	 * The method has side effects (writes to the application's settings table) and should be
 	 * called with a valid database object. It does not return a value.
@@ -332,10 +433,29 @@ class bandwidth_adapter implements opensms_message_adapter {
 	 * @throws \RuntimeException If a database operation fails (e.g., connection error or constraint violation).
 	 */
 	public static function app_defaults(database $database): void {
+		// Set the ACL
 		if (!opensms::has_acl($database, self::ACCESS_CONTROL_UUID)) {
 			opensms::create_access_control($database, self::ACCESS_CONTROL_UUID, self::OPENSMS_PROVIDER_LABEL, self::OPENSMS_PROVIDER_DESCRIPTION);
 			opensms::add_acl_cidrs($database, self::ACCESS_CONTROL_UUID, self::CIDR, self::OPENSMS_PROVIDER_LABEL);
 		}
+
+		// Check if the provider already exists
+		$sql = "select count(provider_uuid) from v_providers where provider_uuid = :provider_uuid ";
+		$parameters['provider_uuid'] = self::OPENSMS_PROVIDER_UUID;
+		$exists = $database->select($sql, $parameters, 'column') > 0;
+		if (!$exists) {
+			// Provider not found so insert it
+			$array = [];
+			$array['providers'][0]['provider_uuid'] = self::OPENSMS_PROVIDER_UUID;
+			$array['providers'][0]['provider_name'] = self::OPENSMS_PROVIDER_NAME;
+			$array['providers'][0]['provider_enabled'] = 'true';
+			$array['providers'][0]['provider_description'] = self::OPENSMS_PROVIDER_DESCRIPTION;
+			$database->save($array);
+		}
 	}
 
+	public static function app_menu(): ?array {
+		//not implemented
+		return null;
+	}
 }

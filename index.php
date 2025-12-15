@@ -33,15 +33,14 @@
 
 // Build the modifier chain
 	$modify = opensms::build_modifier_chain($modifiers);
-	$notify = opensms::build_listener_chain($listeners);
 
 // Call the adapters to get messages
 	$messages = opensms::messages($adapters, $settings, $consumer_payload);
 	foreach ($messages as $message) {
-		// Add additional information to the message
+		// Modify or add any additional information in the message
 		$modify($settings, $message);
 		// Notify all listeners with the message
-		$notify($settings, $message);
+		opensms_message::notify($listeners, $settings, $message);
 	}
 
 // Successful processing

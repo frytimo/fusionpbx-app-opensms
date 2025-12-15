@@ -1,0 +1,323 @@
+/* app/opensms/resources/css/opensms.css */
+
+.opensms_shell {
+	display: grid;
+	grid-template-columns: 340px 1fr;
+	gap: var(--opensms-gap);
+	height: calc(100vh - 120px);
+	min-height: 560px;
+}
+
+.opensms_threads,
+.opensms_chat {
+	background: var(--opensms-panel);
+	border: 1px solid var(--opensms-border);
+	border-radius: var(--opensms-radius);
+	overflow: hidden;
+	display: flex;
+	flex-direction: column;
+}
+
+.opensms_threads_header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 14px 14px 10px 14px;
+	border-bottom: 1px solid var(--opensms-border);
+}
+
+.opensms_title_main {
+	font-size: 16px;
+	font-weight: 700;
+	letter-spacing: 0.2px;
+}
+
+.opensms_title_sub {
+	font-size: 12px;
+	color: var(--opensms-muted);
+	margin-top: 2px;
+}
+
+.opensms_threads_search {
+	padding: 10px 14px;
+	border-bottom: 1px solid var(--opensms-border);
+}
+
+.opensms_input {
+	width: 100%;
+	background: rgba(0,0,0,0.25);
+	border: 1px solid var(--opensms-border);
+	border-radius: 12px;
+	padding: 10px 12px;
+	color: var(--opensms-text);
+	outline: none;
+}
+
+.opensms_input:focus {
+	border-color: rgba(74,163,255,0.7);
+	box-shadow: 0 0 0 3px rgba(74,163,255,0.15);
+}
+
+.opensms_thread_list {
+	padding: 8px;
+	overflow: auto;
+	display: grid;
+	gap: 8px;
+	flex: 1;
+}
+
+.opensms_thread_item {
+	width: 100%;
+	text-align: left;
+	background: rgba(0,0,0,0.15);
+	border: 1px solid var(--opensms-border);
+	border-radius: 14px;
+	padding: 10px 10px;
+	color: var(--opensms-text);
+	cursor: pointer;
+}
+
+.opensms_thread_item.is_active {
+	border-color: rgba(74,163,255,0.8);
+	box-shadow: 0 0 0 3px rgba(74,163,255,0.12);
+}
+
+.opensms_thread_top {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+}
+
+.opensms_thread_label {
+	font-weight: 650;
+	font-size: 13px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 230px;
+}
+
+.opensms_thread_preview {
+	margin-top: 6px;
+	font-size: 12px;
+	color: var(--opensms-muted);
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.opensms_badge {
+	min-width: 22px;
+	height: 22px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 0 7px;
+	border-radius: 999px;
+	background: rgba(74,163,255,0.22);
+	border: 1px solid rgba(74,163,255,0.35);
+	color: var(--opensms-text);
+	font-size: 12px;
+	font-weight: 700;
+}
+
+.opensms_threads_footer {
+	padding: 10px 14px 14px 14px;
+	border-top: 1px solid var(--opensms-border);
+}
+
+.opensms_chat_header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 14px;
+	border-bottom: 1px solid var(--opensms-border);
+}
+
+.opensms_chat_with_label {
+	font-size: 14px;
+	font-weight: 700;
+}
+
+.opensms_chat_with_sub {
+	font-size: 12px;
+	color: var(--opensms-muted);
+	margin-top: 4px;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+}
+
+.opensms_dot {
+	width: 8px;
+	height: 8px;
+	border-radius: 999px;
+	background: rgba(255,255,255,0.35);
+	display: inline-block;
+}
+
+.opensms_messages {
+	flex: 1;
+	overflow: auto;
+	padding: 14px;
+	background: rgba(0,0,0,0.10);
+}
+
+.opensms_bubble_row {
+	display: flex;
+	margin-bottom: 10px;
+}
+
+.opensms_bubble_row.is_inbound {
+	justify-content: flex-start;
+}
+
+.opensms_bubble_row.is_outbound {
+	justify-content: flex-end;
+}
+
+.opensms_bubble {
+	max-width: min(720px, 86%);
+	border-radius: 16px;
+	padding: 10px 12px;
+	border: 1px solid var(--opensms-border);
+}
+
+.opensms_bubble_row.is_inbound .opensms_bubble {
+	background: var(--opensms-inbound);
+}
+
+.opensms_bubble_row.is_outbound .opensms_bubble {
+	background: var(--opensms-outbound);
+	border-color: rgba(255,255,255,0.22);
+}
+
+.opensms_bubble_body {
+	font-size: 13px;
+	line-height: 1.35;
+	white-space: normal;
+	word-wrap: break-word;
+}
+
+.opensms_bubble_meta {
+	margin-top: 6px;
+	display: flex;
+	gap: 10px;
+	justify-content: flex-end;
+	font-size: 11px;
+	color: rgba(255,255,255,0.75);
+}
+
+.opensms_composer {
+	border-top: 1px solid var(--opensms-border);
+	padding: 12px 14px;
+	background: rgba(0,0,0,0.12);
+}
+
+.opensms_composer_row {
+	display: grid;
+	grid-template-columns: 1fr auto;
+	gap: 10px;
+	align-items: end;
+}
+
+.opensms_textarea {
+	width: 100%;
+	resize: none;
+	background: rgba(0,0,0,0.25);
+	border: 1px solid var(--opensms-border);
+	border-radius: 14px;
+	padding: 10px 12px;
+	color: var(--opensms-text);
+	outline: none;
+	min-height: 44px;
+	max-height: 140px;
+}
+
+.opensms_textarea:focus {
+	border-color: rgba(74,163,255,0.7);
+	box-shadow: 0 0 0 3px rgba(74,163,255,0.15);
+}
+
+.opensms_composer_hint {
+	margin-top: 8px;
+	font-size: 11px;
+	color: var(--opensms-muted);
+}
+
+.opensms_btn {
+	border: 1px solid var(--opensms-border);
+	border-radius: 12px;
+	padding: 9px 12px;
+	font-weight: 650;
+	color: var(--opensms-text);
+	background: rgba(0,0,0,0.18);
+	cursor: pointer;
+}
+
+.opensms_btn_primary {
+	background: rgba(74,163,255,0.95);
+	border-color: rgba(74,163,255,0.9);
+	color: #071023;
+}
+
+.opensms_btn_secondary:hover,
+.opensms_btn:hover {
+	filter: brightness(1.05);
+}
+
+.opensms_empty_note,
+.opensms_empty_chat {
+	color: var(--opensms-muted);
+	padding: 14px;
+}
+
+.opensms_modal_backdrop {
+	position: fixed;
+	inset: 0;
+	background: rgba(0,0,0,0.55);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 9999;
+}
+
+.opensms_modal {
+	width: min(720px, calc(100vw - 24px));
+	background: var(--opensms-panel);
+	border: 1px solid var(--opensms-border);
+	border-radius: var(--opensms-radius);
+	overflow: hidden;
+	box-shadow: 0 18px 60px rgba(0,0,0,0.55);
+}
+
+.opensms_modal_header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 14px;
+	border-bottom: 1px solid var(--opensms-border);
+}
+
+.opensms_modal_title {
+	font-weight: 800;
+}
+
+.opensms_modal_body {
+	padding: 14px;
+}
+
+/* Responsive */
+@media (max-width: 980px) {
+	.opensms_shell {
+		grid-template-columns: 1fr;
+		height: auto;
+	}
+	.opensms_threads {
+		min-height: 260px;
+	}
+	.opensms_chat {
+		min-height: 520px;
+	}
+}

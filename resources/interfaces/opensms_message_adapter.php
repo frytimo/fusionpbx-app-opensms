@@ -32,6 +32,8 @@ interface opensms_message_adapter {
 	 */
 	public function receive(settings $settings, object $payload): ?opensms_message;
 
+	public static function send(settings $settings, opensms_message $message): bool;
+
 	/**
 	 * Get the recipient's phone number.
 	 *
@@ -111,4 +113,11 @@ interface opensms_message_adapter {
 	 * @return array|null
 	 */
 	public static function app_config(): ?array;
+
+	/**
+	 * Hook in to the app_menu
+	 *
+	 * @return array|null
+	 */
+	public static function app_menu(): ?array;
 }

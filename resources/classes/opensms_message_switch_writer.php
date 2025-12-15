@@ -17,7 +17,7 @@ class opensms_message_switch_writer implements opensms_message_listener {
 	 * @param opensms_message $message The message object containing SMS details.
 	 * @return void
 	 */
-	public function __invoke(settings $settings, opensms_message $message): void {
+	public function on_message(settings $settings, opensms_message $message): void {
         $config = $settings->database()->config();
 
         // Get the switch credentials from the config file and supply a default value
@@ -41,15 +41,15 @@ class opensms_message_switch_writer implements opensms_message_listener {
 			$event .= "Event-Subclass: SMS::SEND_MESSAGE\n";
 			$event .= "proto: sip\n";
 			$event .= "dest_proto: sip\n";
-			$event .= "from: ".$message->from_number."\n";
-			$event .= "from_full: sip:".$message->from_number."\n";
+			$event .= "from: $message->from_number\n";
+			$event .= "from_full: sip:$message->from_number\n";
 			$event .= "to: $destination\n";
-			$event .= "subject: sip:".$message->to_number."\n";
+			$event .= "subject: sip:$message->to_number\n";
 			$event .= "type: text/plain\n";
 			//$event .= "hint: the hint\n";
 			$event .= "replying: true\n";
-			$event .= "sip_profile: ".$sip_profile."\n";
-			$event .= "_body: ". $message->sms;
+			$event .= "sip_profile: $sip_profile\n";
+			$event .= "_body: $message->sms";
 
 			$event_socket->request($event);
 		}

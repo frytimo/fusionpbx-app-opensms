@@ -37,7 +37,7 @@ class opensms_message_database_writer implements opensms_message_listener {
 	 * @see opensms_message
 	 * @see settings
 	 */
-	public function __invoke(settings $settings, opensms_message $message): void {
+	public function on_message(settings $settings, opensms_message $message): void {
 		// Update the database with the incoming message
 		$array = [
 			'message_queue' => [
