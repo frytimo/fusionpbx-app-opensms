@@ -12,10 +12,10 @@
 	$apps[$x]['description']['en-us'] = 'OpenSMS provides an interface to send and receive SMS messages through multiple providers.';
 
 // providers
-	$y = 0;
+	$y=0;
 	$apps[$x]['db'][$y]['table']['name']                = 'v_providers';
 	$apps[$x]['db'][$y]['table']['parent']              = '';
-	$z                                                  = 0;
+	$z=0;
 	$apps[$x]['db'][$y]['fields'][$z]['name']           = 'provider_uuid';
 	$apps[$x]['db'][$y]['fields'][$z]['type']['pgsql']  = 'uuid';
 	$apps[$x]['db'][$y]['fields'][$z]['type']['sqlite'] = 'text';
@@ -101,12 +101,18 @@
 // Merge all default settings categories from adapters to treat them as part of the main app
 	foreach ($adapters as $adapter_class) {
 		// $x is declared in caller (upgrade index.php file) and must not be declared here
-		/** @var int $x */
 		$opensms_config = $adapter_class::app_config();
-		if ($opensms_config !== null) {
-			foreach ($apps[$x] as $category => $array) {
-				if (isset($opensms_config[$category]) && is_array($opensms_config[$category])) {
-					$apps[$x][$category] = array_merge($apps[$x][$category], $opensms_config[$category]);
+		// Check the adapter has a valid configuration array
+		if ($opensms_config !== null && is_array($opensms_config)) {
+			// Iterate over the configuration categories of the main app and the adapter config
+			foreach ($opensms_config as $value) {
+				if (is_array($value)) {
+					// Get the key
+					$category = key($value);
+					// Compare the category names and merge if they exist in the adapter config
+					if (isset($opensms_config[$category]) && is_array($opensms_config[$category])) {
+						$apps[$x][$category] = array_merge($apps[$x][$category], $opensms_config[$category]);
+					}
 				}
 			}
 		}
