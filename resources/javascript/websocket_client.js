@@ -24,110 +24,446 @@
  * Tim Fry <tim@fusionpbx.com>
  */
 
-class opensms_client {
-	constructor(url, token) {
-		this.ws = new WebSocket(url);
-		this.ws.addEventListener('message', this._onMessage.bind(this));
+class opensms_ws_client {
+	constructor(url, token, config = {}) {
+		this.url = url;
+		this.token = token;
+		this.config = Object.assign({
+			reconnect_delay: 2000,
+			max_reconnect_delay: 30000,
+			ping_interval: 30000,
+			auth_timeout: 10000,
+			pong_timeout: 10000,
+			pong_timeout_max_retries: 3
+		}, config);
+
+		this.ws = null;
 		this._nextId = 1;
 		this._pending = new Map();
 		this._eventHandlers = new Map();
-		// The token is submitted on every request
-		this.token = token;
+		this._reconnectDelay = this.config.reconnect_delay;
+		this._reconnectTimer = null;
+		this._pingTimer = null;
+		this._pongTimer = null;
+		this._pongRetries = 0;
+		this._authenticated = false;
+		this._authTimer = null;
+		this._intentionalClose = false;
 	}
 
-	// internal message handler called when event occurs on the socket
-	_onMessage(ev) {
-		let message;
-		let sms_event;
-		try {
-			message = JSON.parse(ev.data);
-			// check for authentication request
-			if (message.status_code === 407) {
-				console.log('Authentication Required');
-				return;
-			}
-			sms_event = message.payload;
-		} catch (err) {
-			console.error('Error parsing JSON data:', err);
+	/**
+	 * Connect to the websocket server
+	 */
+	connect() {
+		if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) {
+			console.log('OpenSMS: Already connected or connecting');
 			return;
 		}
 
-		// Pull out the request_id first
-		const rid = message.request_id ?? null;
+		this._intentionalClose = false;
+		this._dispatchStatus('connecting');
 
-		// If this is the response to a pending request
-		if (rid && this._pending.has(rid)) {
-			// Destructure with defaults in case they're missing
-			const {
-				service,
-				topic = '',
-				status = 'ok',
-				code = 200,
-				payload = {}
-			} = message;
+		try {
+			this.ws = new WebSocket(this.url);
 
-			const {resolve, reject} = this._pending.get(rid);
-			this._pending.delete(rid);
+			this.ws.addEventListener('open', this._onOpen.bind(this));
+			this.ws.addEventListener('message', this._onMessage.bind(this));
+			this.ws.addEventListener('close', this._onClose.bind(this));
+			this.ws.addEventListener('error', this._onError.bind(this));
+		} catch (err) {
+			console.error('OpenSMS: WebSocket connection error:', err);
+			this._dispatchStatus('error', err.message);
+			this._scheduleReconnect();
+		}
+	}
 
-			if (status === 'ok' && code >= 200 && code < 300) {
-				resolve({service, topic, payload, code, message});
+	/**
+	 * Disconnect from the websocket server
+	 */
+	disconnect() {
+		this._intentionalClose = true;
+		this._clearTimers();
+		if (this.ws) {
+			this.ws.close();
+			this.ws = null;
+		}
+		this._authenticated = false;
+		this._dispatchStatus('disconnected');
+	}
+
+	/**
+	 * Check if connected and authenticated
+	 */
+	isConnected() {
+		return this.ws && this.ws.readyState === WebSocket.OPEN && this._authenticated;
+	}
+
+	/**
+	 * Handle websocket open event
+	 */
+	_onOpen() {
+		console.log('OpenSMS: WebSocket connected, authenticating...');
+		this._reconnectDelay = this.config.reconnect_delay;
+		this._dispatchStatus('connecting');
+
+		// Start authentication timeout
+		this._authTimer = setTimeout(() => {
+			console.error('OpenSMS: Authentication timeout');
+			this._dispatchStatus('error', 'Authentication timeout');
+			this.ws.close();
+		}, this.config.auth_timeout);
+	}
+
+	/**
+	 * Handle websocket message event
+	 */
+	_onMessage(ev) {
+		let message;
+		try {
+			message = JSON.parse(ev.data);
+			console.log('OpenSMS: Received message:', message);
+		} catch (err) {
+			console.error('OpenSMS: Error parsing JSON:', err);
+			return;
+		}
+
+		// Handle authentication request (407 status)
+		if (message.status_code === 407) {
+			console.log('OpenSMS: Authentication required, sending token');
+			this._authenticate();
+			return;
+		}
+
+		// Handle authenticated response
+		if (message.topic === 'authenticated') {
+			console.log('OpenSMS: Successfully authenticated');
+			clearTimeout(this._authTimer);
+			this._authenticated = true;
+			this._dispatchStatus('connected');
+			this._startPingInterval();
+			this._dispatchEvent('authenticated', message);
+
+			// Resolve the pending authentication request if present
+			const authRid = message.request_id !== null && message.request_id !== undefined ? String(message.request_id) : null;
+			if (authRid && this._pending.has(authRid)) {
+				const { resolve, reject } = this._pending.get(authRid);
+				this._pending.delete(authRid);
+				const status = message.status_string || message.status || 'ok';
+				const code = message.status_code || message.code || 200;
+				if (status === 'ok' || (code >= 200 && code < 300)) {
+					resolve(message);
+				} else {
+					const err = new Error(message.error || message.message || `Error ${code}`);
+					err.code = code;
+					reject(err);
+				}
+			}
+			return;
+		}
+
+		// Handle pong response
+		if (message.topic === 'pong' || message.type === 'pong') {
+			this._handlePong();
+			const pongRid = message.request_id !== null && message.request_id !== undefined ? String(message.request_id) : null;
+			if (pongRid && this._pending.has(pongRid)) {
+				const { resolve, reject } = this._pending.get(pongRid);
+				this._pending.delete(pongRid);
+				const status = message.status_string || message.status || 'ok';
+				const code = message.status_code || message.code || 200;
+				if (status === 'ok' || (code >= 200 && code < 300)) {
+					resolve(message);
+				} else {
+					const err = new Error(message.error || message.message || `Error ${code}`);
+					err.code = code;
+					reject(err);
+				}
+			}
+			return;
+		}
+
+		// Handle pending request responses
+		const rid = message.request_id;
+		console.log('OpenSMS: Checking request_id:', rid, 'type:', typeof rid, 'pending:', Array.from(this._pending.keys()));
+
+		// Convert to string for comparison since pending map uses string keys
+		const ridStr = rid !== null && rid !== undefined ? String(rid) : null;
+		if (ridStr && this._pending.has(ridStr)) {
+			const { resolve, reject } = this._pending.get(ridStr);
+			this._pending.delete(ridStr);
+
+			// Check status_string (from server) or status, and status_code
+			const status = message.status_string || message.status || 'ok';
+			const code = message.status_code || message.code || 200;
+
+			console.log('OpenSMS: Response status:', status, 'code:', code);
+
+			if (status === 'ok' || (code >= 200 && code < 300)) {
+				resolve(message);
 			} else {
-				const err = new Error(message || `Error ${code}`);
+				const err = new Error(message.error || message.message || `Error ${code}`);
 				err.code = code;
 				reject(err);
 			}
-
 			return;
 		}
 
-		// Otherwise it's a server-pushed event
-		this._dispatchEvent(message.service_name, sms_event);
+		// Handle server-pushed events (SMS messages)
+		const serviceName = message.service_name || message.service || 'opensms';
+		if (serviceName === 'opensms') {
+			const topic = message.topic || 'MESSAGE';
+			const payload = message.payload || message;
+
+			// Dispatch to topic-specific handlers
+			this._dispatchEvent(topic, payload);
+
+			// Also dispatch to wildcard handlers
+			this._dispatchEvent('*', { topic, payload, message });
+		}
 	}
 
-	// Send a request to the websocket server using JSON string
+	/**
+	 * Handle websocket close event
+	 */
+	_onClose(ev) {
+		console.log('OpenSMS: WebSocket closed:', ev.code, ev.reason);
+		this._clearTimers();
+		this._authenticated = false;
+
+		if (!this._intentionalClose) {
+			this._dispatchStatus('disconnected');
+			this._scheduleReconnect();
+		}
+	}
+
+	/**
+	 * Handle websocket error event
+	 */
+	_onError(err) {
+		console.error('OpenSMS: WebSocket error:', err);
+		this._dispatchStatus('error', 'Connection error');
+	}
+
+	/**
+	 * Send authentication request
+	 */
+	_authenticate() {
+		this.request('authentication', 'opensms', { token: this.token });
+	}
+
+	/**
+	 * Schedule reconnection attempt
+	 */
+	_scheduleReconnect() {
+		if (this._reconnectTimer) return;
+
+		console.log(`OpenSMS: Reconnecting in ${this._reconnectDelay}ms...`);
+		this._reconnectTimer = setTimeout(() => {
+			this._reconnectTimer = null;
+			// Exponential backoff
+			this._reconnectDelay = Math.min(this._reconnectDelay * 1.5, this.config.max_reconnect_delay);
+			this.connect();
+		}, this._reconnectDelay);
+	}
+
+	/**
+	 * Start ping interval to keep connection alive
+	 */
+	_startPingInterval() {
+		this._clearPingTimer();
+		this._pingTimer = setInterval(() => {
+			this._sendPing();
+		}, this.config.ping_interval);
+	}
+
+	/**
+	 * Send ping to server
+	 */
+	_sendPing() {
+		if (!this.isConnected()) return;
+
+		this.request('opensms', 'ping', {});
+
+		// Start pong timeout
+		this._pongTimer = setTimeout(() => {
+			this._pongRetries++;
+			if (this._pongRetries >= this.config.pong_timeout_max_retries) {
+				console.error('OpenSMS: Pong timeout, reconnecting...');
+				this._dispatchStatus('warning');
+				this.ws.close();
+			} else {
+				console.warn(`OpenSMS: Pong timeout (retry ${this._pongRetries}/${this.config.pong_timeout_max_retries})`);
+			}
+		}, this.config.pong_timeout);
+	}
+
+	/**
+	 * Handle pong response
+	 */
+	_handlePong() {
+		clearTimeout(this._pongTimer);
+		this._pongRetries = 0;
+	}
+
+	/**
+	 * Clear all timers
+	 */
+	_clearTimers() {
+		clearTimeout(this._reconnectTimer);
+		clearTimeout(this._authTimer);
+		clearTimeout(this._pongTimer);
+		this._clearPingTimer();
+		this._reconnectTimer = null;
+		this._authTimer = null;
+		this._pongTimer = null;
+	}
+
+	/**
+	 * Clear ping timer
+	 */
+	_clearPingTimer() {
+		if (this._pingTimer) {
+			clearInterval(this._pingTimer);
+			this._pingTimer = null;
+		}
+	}
+
+	/**
+	 * Send a request to the websocket server
+	 */
 	request(service, topic = null, payload = {}) {
-		const request_id = String(this._nextId++);
-		const env = {
-			request_id: request_id,
-			service,
-			...(topic !== null ? {topic} : {}),
+		if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+			return Promise.reject(new Error('WebSocket not connected'));
+		}
+
+		const requestId = String(this._nextId++);
+		const envelope = {
+			request_id: requestId,
+			service: service,
+			...(topic !== null ? { topic: topic } : {}),
 			token: this.token,
 			payload: payload
 		};
-		const raw = JSON.stringify(env);
+
+		const raw = JSON.stringify(envelope);
 		this.ws.send(raw);
+
 		return new Promise((resolve, reject) => {
-			this._pending.set(request_id, {resolve, reject});
+			this._pending.set(requestId, { resolve, reject });
+
+			// Timeout for request
+			setTimeout(() => {
+				if (this._pending.has(requestId)) {
+					this._pending.delete(requestId);
+					reject(new Error('Request timeout'));
+				}
+			}, 30000);
 		});
 	}
 
-	subscribe(topic) {
-		return this.request('opensms', topic);
-	}
-
-	unsubscribe(topic) {
-		return this.request('opensms', topic);
-	}
-
-	// Send an SMS message via websocket
-	sendMessage(to_number, from_number, message_text, domain_name) {
+	/**
+	 * Send an SMS message via websocket
+	 */
+	sendMessage(fromDestinationUuid, fromNumber, toNumber, messageText, domainUuid, userUuid) {
 		return this.request('opensms', 'send', {
-			to_number: to_number,
-			from_number: from_number,
-			sms: message_text,
-			domain_name: domain_name,
-			type: 'sms'
+			from_destination_uuid: fromDestinationUuid,
+			from_number: fromNumber,
+			to_number: toNumber,
+			message_text: messageText,
+			message_type: 'sms',
+			domain_uuid: domainUuid,
+			user_uuid: userUuid
 		});
 	}
 
-	// Request message history
-	getHistory(limit = 50) {
-		return this.request('opensms', 'history', {limit: limit});
+	/**
+	 * Request message history for a thread
+	 */
+	getThreadHistory(threadNumber, limit = 50) {
+		return this.request('opensms', 'history', {
+			thread_number: threadNumber,
+			limit: limit,
+			user_uuid: typeof opensms_user_uuid !== 'undefined' ? opensms_user_uuid : '',
+			domain_uuid: typeof opensms_domain_uuid !== 'undefined' ? opensms_domain_uuid : ''
+		});
 	}
 
-	// register a callback for server-pushes
-	onEvent(topic, handler) {
-		console.log('registering event listener for ' + topic);
+	/**
+	 * Mark messages as read
+	 */
+	markAsRead(messageUuids) {
+		return this.request('opensms', 'mark_read', {
+			message_uuids: Array.isArray(messageUuids) ? messageUuids : [messageUuids]
+		});
+	}
+
+	/**
+	 * Block a number for this user
+	 */
+	blockNumber(number, userUuid, domainUuid) {
+		return this.request('opensms', 'block_number', {
+			number: number,
+			user_uuid: userUuid,
+			domain_uuid: domainUuid
+		});
+	}
+
+	/**
+	 * Unblock a number for this user
+	 */
+	unblockNumber(number, userUuid, domainUuid) {
+		return this.request('opensms', 'unblock_number', {
+			number: number,
+			user_uuid: userUuid,
+			domain_uuid: domainUuid
+		});
+	}
+
+	/**
+	 * List blocked numbers for this user
+	 */
+	listBlocked(userUuid, domainUuid) {
+		return this.request('opensms', 'list_blocked', {
+			user_uuid: userUuid,
+			domain_uuid: domainUuid
+		});
+	}
+
+	/**
+	 * Hide a thread for this user
+	 */
+	hideThread(threadNumber, userUuid, domainUuid) {
+		return this.request('opensms', 'hide_thread', {
+			thread_number: threadNumber,
+			user_uuid: userUuid,
+			domain_uuid: domainUuid
+		});
+	}
+
+	/**
+	 * Unhide a thread for this user
+	 */
+	unhideThread(threadNumber, userUuid, domainUuid) {
+		return this.request('opensms', 'unhide_thread', {
+			thread_number: threadNumber,
+			user_uuid: userUuid,
+			domain_uuid: domainUuid
+		});
+	}
+
+	/**
+	 * List hidden threads for this user
+	 */
+	listHidden(userUuid, domainUuid) {
+		return this.request('opensms', 'list_hidden', {
+			user_uuid: userUuid,
+			domain_uuid: domainUuid
+		});
+	}
+
+	/**
+	 * Register a callback for events
+	 */
+	on(topic, handler) {
 		if (!this._eventHandlers.has(topic)) {
 			this._eventHandlers.set(topic, []);
 		}
@@ -135,39 +471,41 @@ class opensms_client {
 	}
 
 	/**
-	 * Dispatch a server-push event envelope to all registered handlers.
-	 * @param {string} service
-	 * @param {object} env
+	 * Remove event handler
 	 */
-	_dispatchEvent(service, env) {
-		let event = (typeof env === 'string')
-			? JSON.parse(env)
-			: env;
+	off(topic, handler) {
+		if (!this._eventHandlers.has(topic)) return;
+		const handlers = this._eventHandlers.get(topic);
+		const idx = handlers.indexOf(handler);
+		if (idx !== -1) {
+			handlers.splice(idx, 1);
+		}
+	}
 
-		// dispatch event handlers
-		if (service === 'opensms') {
-			const topic = event.event_name || 'MESSAGE';
-
-			let handlers = this._eventHandlers.get(topic) || [];
-			if (handlers.length === 0) {
-				handlers = this._eventHandlers.get('*') || [];
-			}
-			for (const fn of handlers) {
-				try {
-					fn(event);
-				} catch (err) {
-					console.error(`Error in handler for "${topic}":`, err);
-				}
-			}
-		} else {
-			const handlers = this._eventHandlers.get(service) || [];
-			for (const fn of handlers) {
-				try {
-					fn(event.data, event);
-				} catch (err) {
-					console.error(`Error in handler for "${service}":`, err);
-				}
+	/**
+	 * Dispatch event to registered handlers
+	 */
+	_dispatchEvent(topic, data) {
+		const handlers = this._eventHandlers.get(topic) || [];
+		for (const fn of handlers) {
+			try {
+				fn(data);
+			} catch (err) {
+				console.error(`OpenSMS: Error in event handler for "${topic}":`, err);
 			}
 		}
 	}
+
+	/**
+	 * Dispatch status change event
+	 */
+	_dispatchStatus(status, message = null) {
+		this._dispatchEvent('status', { status, message });
+	}
 }
+
+// Export for use in other modules
+if (typeof window !== 'undefined') {
+	window.opensms_ws_client = opensms_ws_client;
+}
+

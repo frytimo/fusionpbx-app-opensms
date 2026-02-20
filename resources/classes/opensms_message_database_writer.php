@@ -38,6 +38,13 @@ class opensms_message_database_writer implements opensms_message_listener {
 	 * @see settings
 	 */
 	public function on_message(settings $settings, opensms_message $message): void {
+
+		// Handle delivery receipts: update the original outbound message status
+		if ($message->type === 'delivery_receipt') {
+			$this->handle_delivery_receipt($settings, $message);
+			return;
+		}
+
 		// Update the database with the incoming message
 		$array = [
 			'message_queue' => [
@@ -90,5 +97,47 @@ class opensms_message_database_writer implements opensms_message_listener {
 
 		// Save the message to the database
 		$settings->database()->save($array);
+	}
+
+	/**
+	 * Handle a delivery receipt by updating the original outbound message.
+	 *
+	 * Looks up the original message by UUID (stored in Bandwidth's tag field during send)
+	 * and updates its message_json with the delivery status information.
+	 *
+	 * @param settings        $settings
+	 * @param opensms_message $message The delivery receipt message
+	 * @return void
+	 */
+	private function handle_delivery_receipt(settings $settings, opensms_message $message): void {
+		$database = $settings->database();
+		$original_uuid = $message->delivery_original_uuid;
+
+		if (empty($original_uuid) || !is_uuid($original_uuid)) {
+			// Cannot match without a valid original message UUID
+			return;
+		}
+
+		// Build a delivery status JSON to store
+		$delivery_info = json_encode([
+			'delivery_status' => $message->delivery_status,
+			'delivery_time'   => $message->time ?: date('Y-m-d H:i:s'),
+			'delivery_detail' => $message->sms,
+		]);
+
+		// Update the original outbound message with delivery status
+		$sql  = "UPDATE v_messages SET ";
+		$sql .= "message_json = :delivery_info, ";
+		$sql .= "update_date = now() ";
+		$sql .= "WHERE message_uuid = :message_uuid ";
+		$sql .= "AND message_direction = 'outbound'";
+
+		$p = permissions::new();
+		$p->add('message_edit', 'temp');
+
+		$database->execute($sql, [
+			'delivery_info' => $delivery_info,
+			'message_uuid'  => $original_uuid,
+		]);
 	}
 }

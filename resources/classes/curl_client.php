@@ -90,4 +90,22 @@ class curl_client {
 
 		return $this->request($url, 'POST', $options);
 	}
+
+	/**
+	 * Shortcut for POST request with JSON-encoded body.
+	 * Sends the array as a JSON string instead of form-encoded data.
+	 */
+	public function post_json(string $url, array $data = [], array $headers = [], ?string $username = null, ?string $password = null): array {
+		$options = [
+			'post_fields' => json_encode($data),
+			'headers' => $headers
+		];
+
+		if ($username !== null) {
+			$options['username'] = $username;
+			$options['password'] = $password ?? '';
+		}
+
+		return $this->request($url, 'POST', $options);
+	}
 }

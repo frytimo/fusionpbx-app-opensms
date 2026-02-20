@@ -62,7 +62,7 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 	 *
 	 * @return opensms_message_adapter|null The adapter, or null if no match.
 	 */
-	public function __invoke(settings $settings, opensms_message $message, array $adapters, ?callable $next): ?string {
+	public function __invoke(settings $settings, opensms_message $message, ?callable $next): ?opensms_message_adapter {
 		// // Check if the message is coming from a phone number associated with Bandwidth
 		// $sql = "select reverse(concat(destination_prefix, destination_trunk, destination_area_code, destination_number)) as rev_number from v_destinations ";
 		// $sql .= "where provider_uuid = :provider_uuid ";
@@ -86,7 +86,29 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 		// if ($next !== null) {
 		// 	return $next($settings, $message);
 		// }
+		$sql = "select provider_uuid from v_destinations as d, v_providers as p ";
+		$sql .= "where d.provider_uuid = :provider_uuid ";
+		$sql .= "and d.destination_enabled = true ";
+		$sql .= "and reverse(concat(d.destination_prefix, d.destination_trunk, d.destination_area_code, d.destination_number)) in (:destination_number) ";
+		$parameters['provider_uuid'] = self::OPENSMS_PROVIDER_UUID;
+		$parameters['destination_number'] = implode(',', opensms::reverse_number_as_array($message->to_number, 10));
+		$result = $settings->database()->select($sql, $parameters, 'column');
+		if (!empty($result)) {
+			// Matched Bandwidth provider
+			return $this;
+		}
 		return null;
+	}
+
+	public static function has_destination(settings $settings, opensms_message $message): bool {
+		$sql = "select provider_uuid from v_destinations as d, v_providers as p ";
+		$sql .= "where d.provider_uuid = :provider_uuid ";
+		$sql .= "and d.destination_enabled = true ";
+		$sql .= "and reverse(concat(d.destination_prefix, d.destination_trunk, d.destination_area_code, d.destination_number)) in (:destination_number) ";
+		$parameters['provider_uuid'] = self::OPENSMS_PROVIDER_UUID;
+		$parameters['destination_number'] = implode(',', opensms::reverse_number_as_array($message->to_number, 10));
+		$result = $settings->database()->select($sql, $parameters, 'column');
+		return !empty($result);
 	}
 
 	/**
@@ -228,30 +250,72 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 		// Store the received data
 		$this->received_data = $json_string;
 
+		// Determine callback type
+		// Bandwidth sends different callback types:
+		//   message-received  = inbound SMS/MMS from external number
+		//   message-delivered  = delivery receipt - carrier confirmed delivery
+		//   message-sending    = outbound message being sent to carrier
+		//   message-sent       = outbound message accepted by carrier
+		//   message-failed     = outbound message failed
+		$callback_type = $json_array[0]['type'] ?? '';
+
+		// Map Bandwidth callback types to human-readable delivery statuses
+		$delivery_receipt_types = [
+			'message-sending'   => 'sending',
+			'message-sent'      => 'sent',
+			'message-delivered'  => 'delivered',
+			'message-failed'    => 'failed',
+		];
+
+		// Handle delivery receipts separately from inbound messages
+		if (isset($delivery_receipt_types[$callback_type])) {
+			$message = new opensms_message(uuid(), self::OPENSMS_PROVIDER_UUID);
+			$message->type = 'delivery_receipt';
+			$message->delivery_status = $delivery_receipt_types[$callback_type];
+
+			// The tag field contains our original message_uuid (set during send)
+			$message->delivery_original_uuid = $json_array[0]['message']['tag'] ?? '';
+
+			// Populate from/to from the callback (note: for outbound receipts,
+			// "from" is our number and "to" is the remote number)
+			$message->from_number = $json_array[0]['message']['from'] ?? '';
+			$message->to_number = $json_array[0]['message']['to'][0] ?? '';
+			$message->time = $json_array[0]['message']['time'] ?? date('c');
+			$message->sms = $json_array[0]['description'] ?? '';
+
+			// Populate these from the adapter's getters
+			$this->from_number = $message->from_number;
+			$this->to_number = $message->to_number;
+			$this->time = $message->time;
+			$this->sms = $message->sms;
+			$this->type = 'delivery_receipt';
+
+			return $message;
+		}
+
+		// For non-received types we don't recognize, skip
+		if ($callback_type !== '' && $callback_type !== 'message-received') {
+			return null;
+		}
+
+		// Process inbound message fields
 		// Process 'time' if present
 		if (isset($json_array[0]['message']['time'])) {
-			// Validate 'time' format
 			$this->time = $json_array[0]['message']['time'];
-			// Further validation can be added here
 		}
 
 		// Process 'to' if present
 		if (isset($json_array[0]['message']['to'][0])) {
-			// Validate 'to' number
 			$this->to_number = $json_array[0]['message']['to'][0];
-			// Further validation can be added here
 		}
 
 		// Process 'from' if present
 		if (isset($json_array[0]['message']['from'])) {
-			// Validate 'from' number
 			$this->from_number = $json_array[0]['message']['from'];
-			// Further validation can be added here
 		}
 
 		// Process 'text' if present
 		if (isset($json_array[0]['message']['text'])) {
-			// Process SMS message
 			$this->sms = $this->process_sms($json_array);
 			$this->type = 'sms';
 		}
@@ -259,17 +323,12 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 		// Process MMS media if present
 		if (isset($json_array[0]['message']['media'])) {
 			$links = $json_array[0]['message']['media'];
-			// Check for MMS messages
 			if (!empty($links)) {
 				$this->mms = $this->process_mms($links);
 				$this->type = 'mms';
 			}
 		}
 
-		// No modifications are made to the message object here
-		// Instead, we simply return a new opensms_message instance because
-		// the message data is stored in this adapter's properties.
-		// The caller will use the adapter's getters to access the data.
 		return new opensms_message(uuid(), self::OPENSMS_PROVIDER_UUID);
 	}
 
@@ -296,18 +355,31 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 
 		// Get the Bandwidth configuration from settings
 		$account_id = $settings->get(self::OPENSMS_PROVIDER_NAME, 'account_id', '');
-		$url = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_url', "https://messaging.bandwidth.com/api/v2/{$account_id}/messages");
+		$url = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_url', "https://messaging.bandwidth.com/api/v2/users/{$account_id}/messages");
 		$application_id = $settings->get(self::OPENSMS_PROVIDER_NAME, 'application_id', '');
-		$api_username = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_username', '');
-		$api_password = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_password', '');
+
+		// API credentials: prefer api_token/api_secret, fall back to callback_user_id/callback_password
+		$api_username = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_token', '');
+		$api_password = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_secret', '');
+		if (empty($api_username)) {
+			$api_username = $settings->get(self::OPENSMS_PROVIDER_NAME, 'callback_user_id', '');
+		}
+		if (empty($api_password)) {
+			$api_password = $settings->get(self::OPENSMS_PROVIDER_NAME, 'callback_password', '');
+		}
+
+		// Normalize phone numbers to E.164 format for Bandwidth API
+		$to_number = self::normalize_to_e164($message->to_number);
+		$from_number = self::normalize_to_e164($message->from_number);
 
 		// Payload structure for Bandwidth API
+		// Use the message UUID as the tag so delivery receipts can be matched
 		$payload = [
-			'to' => $message->to_number,
-			'from' => $message->from_number,
+			'to'            => [$to_number],
+			'from'          => $from_number,
 			'applicationId' => $application_id,
-			'text' => $message->sms,
-			'tag' => 'OpenSMS Message',
+			'text'          => $message->sms,
+			'tag'           => $message->uuid,
 		];
 
 		// Prepare the request curl client
@@ -320,19 +392,59 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 			'Authorization: Basic ' . base64_encode($api_username . ':' . $api_password),
 		];
 
-		// Send the POST request to Bandwidth
-		$response = $curl_client->post($url, $message->to_array(), $headers, null, null, true);
+		// Send the JSON-encoded payload to Bandwidth
+		$response = $curl_client->post_json($url, $payload, $headers);
 
-		// Check for errors in the response
+		// Check for cURL transport errors
 		if (!empty($response['error'])) {
 			throw new curl_exception("Error sending message via Bandwidth: " . $response['error']);
-			return false;
 		}
 
-		// Assume success if we reach here
+		// Check HTTP status code (Bandwidth returns 202 on success)
+		$http_code = $response['info']['http_code'] ?? 0;
+		if ($http_code < 200 || $http_code >= 300) {
+			$body = $response['content'] ?? '';
+			throw new \RuntimeException("Bandwidth API returned HTTP {$http_code}: {$body}");
+		}
+
 		return true;
 	}
 
+	/**
+	 * Normalize a phone number to E.164 format for Bandwidth API.
+	 * Ensures numbers have a leading +1 for North American numbers.
+	 *
+	 * @param string $number The phone number to normalize
+	 * @return string The E.164 formatted number
+	 */
+	private static function normalize_to_e164(string $number): string {
+		// Strip any non-digit characters except leading +
+		$cleaned = preg_replace('/[^\d+]/', '', $number);
+
+		// Already in E.164 format
+		if (str_starts_with($cleaned, '+')) {
+			return $cleaned;
+		}
+
+		// 11 digits starting with 1 (e.g. 19022012170) -> +19022012170
+		if (strlen($cleaned) === 11 && str_starts_with($cleaned, '1')) {
+			return '+' . $cleaned;
+		}
+
+		// 10 digits (e.g. 9022012170) -> +19022012170
+		if (strlen($cleaned) === 10) {
+			return '+1' . $cleaned;
+		}
+
+		// Fallback: prepend + and hope for the best
+		return '+' . $cleaned;
+	}
+
+	/**
+	 * Process the SMS message text from the JSON array.
+	 * @param array $json_array The decoded JSON array from Bandwidth.
+	 * @return string The SMS message text.
+	 */
 	private function process_sms(array $json_array): string {
 		// Handle SMS message
 		$sms_text = $json_array[0]['message']['text'] ?? '';
@@ -340,6 +452,15 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 		return $sms_text;
 	}
 
+	/**
+	 * Process MMS media links from the JSON array.
+	 *
+	 * Fetches media content from the provided links using optional
+	 * authentication and returns an array of media file contents.
+	 *
+	 * @param array $mms Array of media links from the Bandwidth payload.
+	 * @return array Array of media file contents.
+	 */
 	private function process_mms(array $mms): array {
 		$media_files = [];
 		$username = $this->settings->get(self::OPENSMS_PROVIDER_NAME, 'callback_user_id', '');
@@ -412,6 +533,20 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 		$defaults['default_settings'][$y]['default_setting_uuid'] = '9922e56a-ef2a-4cd1-bd66-37fe8e8e3392';
 		$defaults['default_settings'][$y]['default_setting_category'] = self::OPENSMS_PROVIDER_NAME;
 		$defaults['default_settings'][$y]['default_setting_subcategory'] = 'application_id';
+		$defaults['default_settings'][$y]['default_setting_name'] = 'text';
+		$defaults['default_settings'][$y]['default_setting_value'] = '';
+		$defaults['default_settings'][$y]['default_setting_enabled'] = 'false';
+		$y++;
+		$defaults['default_settings'][$y]['default_setting_uuid'] = '60b148d1-5ea6-4561-909a-935bb4c99000';
+		$defaults['default_settings'][$y]['default_setting_category'] = self::OPENSMS_PROVIDER_NAME;
+		$defaults['default_settings'][$y]['default_setting_subcategory'] = 'api_token';
+		$defaults['default_settings'][$y]['default_setting_name'] = 'text';
+		$defaults['default_settings'][$y]['default_setting_value'] = '';
+		$defaults['default_settings'][$y]['default_setting_enabled'] = 'false';
+		$y++;
+		$defaults['default_settings'][$y]['default_setting_uuid'] = 'c4b8d2e3-5f60-7890-1bcd-ef2345678901';
+		$defaults['default_settings'][$y]['default_setting_category'] = self::OPENSMS_PROVIDER_NAME;
+		$defaults['default_settings'][$y]['default_setting_subcategory'] = 'api_secret';
 		$defaults['default_settings'][$y]['default_setting_name'] = 'text';
 		$defaults['default_settings'][$y]['default_setting_value'] = '';
 		$defaults['default_settings'][$y]['default_setting_enabled'] = 'false';

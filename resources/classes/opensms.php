@@ -185,8 +185,6 @@ class opensms {
 		$success = self::send($routers, $adapters, $settings, $message);
 
 		if ($success) {
-			// Build listener chain and notify
-			$notify = self::build_listener_chain($listeners);
 			opensms_message::notify($listeners, $settings, $message);
 		}
 	}
@@ -204,19 +202,13 @@ class opensms {
 	 * @return bool True if sent successfully.
 	 */
 	public static function send(array $routers, array $adapters, settings $settings, opensms_message $message): bool {
-		// Build router chain with discovered adapters
-		$route = opensms_router_chain::build($routers, $adapters);
-
-		// Find adapter class
-		$adapter_class = $route($settings, $message);
-
-		if ($adapter_class === null) {
-			// No adapter found for this message
-			return false;
+		foreach ($adapters as $adapter_class) {
+			/** @var opensms_message_adapter $adapter */
+			if ($adapter_class::has_destination($settings, $message)) {
+				return $adapter_class::send($settings, $message);
+			}
 		}
-
-		// Send via adapter's static send method
-		return $adapter_class::send($settings, $message);
+		return false;
 	}
 
 	/**
@@ -387,7 +379,7 @@ class opensms {
 	 * This method takes a phone number as input, reverses it, and generates
 	 * an array containing all possible prefixes of the reversed number.
 	 * The prefixes are ordered from longest to shortest.
-	 * 
+	 *
 	 * Sending a number like "1234567890" would return:
 	 * [
 	 *  "0987654321",
@@ -419,9 +411,9 @@ class opensms {
 	 * @return array An array of prefixes derived from the reversed phone number
 	 */
 	public static function reverse_number_as_array(string $number, ?int $length = null): array {
-		$prefixes = [];
+		$prefixes        = [];
 		$reversed_number = strrev($number);
-		$length = $length ?? strlen($number);
+		$length          = $length ?? strlen($number);
 		if ($length >= strlen($number)) {
 			return [$reversed_number];
 		}
@@ -429,6 +421,7 @@ class opensms {
 		for ($i = strlen($reversed_number); $i >= $count; $i--) {
 			$prefixes[] = substr($reversed_number, 0, $i);
 		}
+
 		return $prefixes;
 	}
 }

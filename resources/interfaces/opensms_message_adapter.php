@@ -34,6 +34,8 @@ interface opensms_message_adapter {
 
 	public static function send(settings $settings, opensms_message $message): bool;
 
+	public static function has_destination(settings $settings, opensms_message $message): bool;
+
 	/**
 	 * Get the recipient's phone number.
 	 *

@@ -39,6 +39,31 @@ if (!permission_exists('sms_view')) {
 // additional permissions
 $send_enabled = permission_exists('sms_send');
 
+// set default
+$debug = false;
+
+global $domain_uuid, $user_uuid, $settings, $database, $config;
+
+if (empty($domain_uuid)) {
+	$domain_uuid = $_SESSION['domain_uuid'] ?? '';
+}
+
+if (empty($user_uuid)) {
+	$user_uuid = $_SESSION['user_uuid'] ?? '';
+}
+
+if (!($config instanceof config)) {
+	$config = config::load();
+}
+
+if (!($database instanceof database)) {
+	$database = database::new(['config' => $config]);
+}
+
+if (!($settings instanceof settings)) {
+	$settings = new settings(['database' => $database, 'domain_uuid' => $domain_uuid, 'user_uuid' => $user_uuid]);
+}
+
 // get available texting destinations for this user
 $destinations = [];
 if ($send_enabled) {
@@ -62,49 +87,75 @@ if ($send_enabled) {
 		'user_uuid' => $user_uuid
 	];
 	$destinations = $database->select($sql, $parameters, 'all');
-
-	// Debug output - temporarily add this to see what's happening
-	if (empty($destinations)) {
-		echo "<!-- DEBUG: No destinations found. Send enabled: " . ($send_enabled ? 'true' : 'false') . ". Domain UUID: $domain_uuid. User UUID: $user_uuid. Groups: " . json_encode($group_uuids) . " -->";
-		// Also check if there are any destinations with destination_type_text = 1 at all
-		$debug_sql = "select count(*) as count from v_destinations where domain_uuid = :domain_uuid and destination_type_text = 1 and destination_enabled = 'true'";
-		$debug_result = $database->select($debug_sql, ['domain_uuid' => $domain_uuid], 'column');
-		echo "<!-- DEBUG: Total text destinations in domain: $debug_result -->";
-	}
-
 	unset($sql, $parameters);
-}
-
-// set default
-$debug = false;
-
-global $domain_uuid, $user_uuid, $settings, $database, $config;
-
-if (empty($domain_uuid)) {
-	$domain_uuid = $_SESSION['domain_uuid'] ?? '';
-}
-
-if (empty($user_uuid)) {
-	$user_uuid = $_SESSION['user_uuid'] ?? '';
-}
-
-if (!($config instanceof config)) {
-	$config = config::load();
-}
-
-if (!($settings instanceof settings)) {
-	$settings = new settings(['database' => $database, 'domain_uuid' => $domain_uuid, 'user_uuid' => $user_uuid]);
 }
 
 // add multi-lingual support
 $language = new text;
 $text     = $language->get();
 
+// create token for websocket authentication
 $token = (new token())->create($_SERVER['PHP_SELF']);
+
+// pass the token to the subscriber class so that when this subscriber makes a websocket
+// connection, the subscriber object can validate the information.
+subscriber::save_token($token, ['opensms']);
+
+// get websocket settings from default settings
+$ws_settings = [
+	'reconnect_delay'          => (int)$settings->get('opensms', 'reconnect_delay', 2000),
+	'ping_interval'            => (int)$settings->get('opensms', 'ping_interval', 30000),
+	'auth_timeout'             => (int)$settings->get('opensms', 'auth_timeout', 10000),
+	'pong_timeout'             => (int)$settings->get('opensms', 'pong_timeout', 10000),
+	'refresh_interval'         => (int)$settings->get('opensms', 'refresh_interval', 0),
+	'max_reconnect_delay'      => (int)$settings->get('opensms', 'max_reconnect_delay', 30000),
+	'pong_timeout_max_retries' => (int)$settings->get('opensms', 'pong_timeout_max_retries', 3),
+];
+
+// get theme colors for status indicator
+$status_colors = [
+	'connected'    => $settings->get('theme', 'opensms_status_connected', '#28a745'),
+	'warning'      => $settings->get('theme', 'opensms_status_warning', '#ffc107'),
+	'disconnected' => $settings->get('theme', 'opensms_status_disconnected', '#dc3545'),
+	'connecting'   => $settings->get('theme', 'opensms_status_connecting', '#6c757d'),
+];
+
+// get status indicator mode and icons
+$status_indicator_mode = $settings->get('theme', 'opensms_status_indicator_mode', 'color');
+$status_icons = [
+	'connected'    => $settings->get('theme', 'opensms_status_icon_connected', 'fa-solid fa-plug-circle-check'),
+	'warning'      => $settings->get('theme', 'opensms_status_icon_warning', 'fa-solid fa-plug-circle-exclamation'),
+	'disconnected' => $settings->get('theme', 'opensms_status_icon_disconnected', 'fa-solid fa-plug-circle-xmark'),
+	'connecting'   => $settings->get('theme', 'opensms_status_icon_connecting', 'fa-solid fa-plug fa-fade'),
+];
+
+// get status tooltips from translations
+$status_tooltips = [
+	'connected'    => $text['status-connected'] ?? 'Connected',
+	'warning'      => $text['status-warning'] ?? 'Warning',
+	'disconnected' => $text['status-disconnected'] ?? 'Disconnected',
+	'connecting'   => $text['status-connecting'] ?? 'Connecting',
+];
+
+// get websocket URL (use wss:// for secure connections, proxied through nginx)
+$ws_protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'wss' : 'ws';
+$ws_host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+$ws_path = $settings->get('websocket', 'path', '/websockets/');
+$ws_url = $ws_protocol . '://' . $ws_host . $ws_path;
 
 // show the header
 $document['title'] = $text['title-sms'] ?? 'SMS Messages';
 require_once dirname(__DIR__, 2) . "/resources/header.php";
+
+// generate version hash for cache busting
+$ws_client_file = __DIR__ . '/resources/javascript/websocket_client.js';
+$ws_client_hash = file_exists($ws_client_file) ? md5_file($ws_client_file) : '1';
+
+$ui_js_file = __DIR__ . '/resources/javascript/opensms_ui.js';
+$ui_js_hash = file_exists($ui_js_file) ? md5_file($ui_js_file) : '1';
+
+$css_file = __DIR__ . '/resources/css/opensms.css';
+$css_hash = file_exists($css_file) ? md5_file($css_file) : '1';
 
 // show the content
 $open_sms = new opensms_smarty_template();
@@ -112,9 +163,52 @@ $open_sms->assign('destinations', $destinations);
 $open_sms->assign('send_enabled', $send_enabled);
 $open_sms->assign('text', $text);
 $open_sms->assign('token', $token);
-$open_sms->assign('app_path', basename(__DIR__));
+$open_sms->assign('app_path', PROJECT_PATH . '/app/opensms');
+$open_sms->assign('domain_uuid', $domain_uuid);
+$open_sms->assign('domain_name', $_SESSION['domain_name'] ?? '');
+$open_sms->assign('user_uuid', $user_uuid);
+$open_sms->assign('ws_url', $ws_url);
+$open_sms->assign('ws_settings', $ws_settings);
+$open_sms->assign('status_colors', $status_colors);
+$open_sms->assign('status_icons', $status_icons);
+$open_sms->assign('status_tooltips', $status_tooltips);
+$open_sms->assign('status_indicator_mode', $status_indicator_mode);
+$open_sms->assign('asset_version', $ws_client_hash);
+$open_sms->assign('ws_client_hash', $ws_client_hash);
+$open_sms->assign('ui_js_hash', $ui_js_hash);
+$open_sms->assign('css_hash', $css_hash);
 
-//$open_sms->assign('threads', opensms::get_messages($user_uuid));
+// get initial message threads for the user
+$threads = [];
+$sql = "SELECT DISTINCT ";
+$sql .= "CASE WHEN message_direction = 'inbound' THEN message_from ELSE message_to END as thread_number, ";
+$sql .= "MAX(message_date) as last_date, ";
+$sql .= "COUNT(CASE WHEN message_read = false AND message_direction = 'inbound' THEN 1 END) as unread_count ";
+$sql .= "FROM v_messages ";
+$sql .= "WHERE domain_uuid = :domain_uuid ";
+$sql .= "AND (user_uuid = :user_uuid OR message_from IN (SELECT destination_number FROM v_destinations WHERE domain_uuid = :domain_uuid AND destination_type_text = 1)) ";
+$sql .= "AND (CASE WHEN message_direction = 'inbound' THEN message_from ELSE message_to END) NOT IN (SELECT user_setting_name FROM v_user_settings WHERE domain_uuid = :domain_uuid AND user_uuid = :user_uuid AND user_setting_category = 'opensms' AND user_setting_subcategory = 'hidden_thread' AND user_setting_enabled = 'true') ";
+$sql .= "GROUP BY thread_number ";
+$sql .= "ORDER BY last_date DESC ";
+$sql .= "LIMIT 50";
+$parameters = [
+	'domain_uuid' => $domain_uuid,
+	'user_uuid' => $user_uuid,
+];
+$thread_results = $database->select($sql, $parameters, 'all');
+if (!empty($thread_results)) {
+	foreach ($thread_results as $row) {
+		$threads[] = [
+			'thread_id' => $row['thread_number'],
+			'label' => format_phone($row['thread_number']),
+			'last_preview' => '',
+			'unread_count' => (int)$row['unread_count']
+		];
+	}
+}
+unset($sql, $parameters);
+$open_sms->assign('threads', $threads);
+
 $open_sms->display();
 
 // show the footer

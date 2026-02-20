@@ -50,11 +50,19 @@
 				role="tab"
 				class="opensms_thread_item {if $smarty.foreach.thread_loop.first}is_active{/if}"
 				aria-selected="{if $smarty.foreach.thread_loop.first}true{else}false{/if}"
-				data_thread_id="{$thread.thread_id|escape:'html'}">
+				data-thread-id="{$thread.thread_id|escape:'html'}">
 
 				<div class="opensms_thread_top">
 					<div class="opensms_thread_label">
 						{$thread.label|escape:'html'}
+					</div>
+					<div class="opensms_thread_actions">
+						<span role="button" tabindex="0" class="opensms_thread_action" data-action="block" data-thread-id="{$thread.thread_id|escape:'html'}" title="Block / Unblock">
+							<span class="fas fa-ban"></span>
+						</span>
+						<span role="button" tabindex="0" class="opensms_thread_action" data-action="delete" data-thread-id="{$thread.thread_id|escape:'html'}" title="Hide conversation">
+							<span class="fas fa-trash"></span>
+						</span>
 					</div>
 
 					{if $thread.unread_count|default:0 > 0}

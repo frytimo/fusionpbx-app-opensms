@@ -190,6 +190,23 @@ class opensms_message {
 	public $received_data;
 
 	/**
+	 * Delivery status for receipt messages (e.g., 'sending', 'sent', 'delivered', 'failed').
+	 * Only populated when type = 'delivery_receipt'.
+	 *
+	 * @var string
+	 */
+	public $delivery_status = '';
+
+	/**
+	 * The original message UUID that this delivery receipt refers to.
+	 * Populated from the Bandwidth 'tag' field which contains the message UUID
+	 * that was set during send.
+	 *
+	 * @var string
+	 */
+	public $delivery_original_uuid = '';
+
+	/**
 	 * Stores the destination addresses for broadcast messages
 	 *
 	 * @var array Array of destination phone numbers or addresses for broadcasting messages

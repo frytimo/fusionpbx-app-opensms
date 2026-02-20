@@ -2,6 +2,9 @@
 
 class opensms_service extends base_websocket_system_service {
 
+	/** @var settings */
+	private $settings;
+
 	/** @var resource|false */
 	private $switch_socket;
 
@@ -82,10 +85,198 @@ class opensms_service extends base_websocket_system_service {
 
 		// Register websocket topics
 		$this->on_topic('send', [$this, 'handle_send_request']);
+		$this->on_topic('history', [$this, 'handle_history_request']);
+		$this->on_topic('mark_read', [$this, 'handle_mark_read_request']);
+		$this->on_topic('ping', [$this, 'handle_ping_request']);
+		$this->on_topic('block_number', [$this, 'handle_block_number_request']);
+		$this->on_topic('unblock_number', [$this, 'handle_unblock_number_request']);
+		$this->on_topic('list_blocked', [$this, 'handle_list_blocked_request']);
+		$this->on_topic('hide_thread', [$this, 'handle_hide_thread_request']);
+		$this->on_topic('unhide_thread', [$this, 'handle_unhide_thread_request']);
+		$this->on_topic('list_hidden', [$this, 'handle_list_hidden_request']);
 
 		// get the settings from the global defaults
 		$this->reload_settings();
 	}
+
+	/**
+	 * Handle ping request (keep-alive)
+	 *
+	 * @param websocket_message $websocket_message
+	 */
+	protected function handle_ping_request(websocket_message $websocket_message): void {
+		$response = new websocket_message();
+		$response->service_name(self::get_service_name());
+		$response->topic('pong');
+		$response->status_string('ok');
+		$response->status_code(200);
+		$response->request_id($websocket_message->request_id());
+		$response->resource_id($websocket_message->resource_id());
+		$response->payload(['time' => time()]);
+		$this->respond($response);
+	}
+
+	/**
+	 * Handle history request from clients
+	 *
+	 * @param websocket_message $websocket_message
+	 */
+	protected function handle_history_request(websocket_message $websocket_message): void {
+		$this->debug('Handling history request');
+		$this->debug('Request ID: ' . $websocket_message->request_id());
+		$this->debug('Resource ID: ' . $websocket_message->resource_id());
+
+		try {
+			$payload = $websocket_message->payload();
+			$this->debug('History payload: ' . json_encode($payload));
+
+			$thread_number = $payload['thread_number'] ?? '';
+			$user_uuid = $payload['user_uuid'] ?? '';
+			$domain_uuid = $payload['domain_uuid'] ?? '';
+			$limit = min((int)($payload['limit'] ?? 50), 100);
+
+			if (empty($thread_number) || empty($user_uuid) || empty($domain_uuid)) {
+				throw new \InvalidArgumentException('Thread number, user UUID, and domain UUID are required');
+			}
+
+			$this->debug("Fetching history for thread: {$thread_number}, user: {$user_uuid}, domain: {$domain_uuid}, limit: {$limit}");
+
+			// Get database singleton instance
+			$database = database::new();
+
+			// Get messages for this thread - use string concatenation for LIMIT to avoid PDO issues
+			$sql = "SELECT message_uuid, message_direction as direction, message_from, message_to, ";
+			$sql .= "message_text, message_type, message_date as message_time, message_read, message_json ";
+			$sql .= "FROM v_messages ";
+			$sql .= "WHERE domain_uuid = :domain_uuid ";
+			$sql .= "AND (message_from = :thread_number1 OR message_to = :thread_number2) ";
+			$sql .= "ORDER BY message_date DESC ";
+			$sql .= "LIMIT " . (int)$limit;
+
+			$parameters = [
+				'domain_uuid' => $domain_uuid,
+				'thread_number1' => $thread_number,
+				'thread_number2' => $thread_number
+			];
+
+			$this->debug('Executing SQL: ' . $sql);
+			$this->debug('Parameters: ' . json_encode($parameters));
+
+			$messages = $database->select($sql, $parameters, 'all');
+
+			$this->debug('Query result type: ' . gettype($messages));
+			$this->debug('Query result count: ' . (is_array($messages) ? count($messages) : 'N/A'));
+
+			// Ensure messages is always an array
+			if (!is_array($messages)) {
+				$messages = [];
+			}
+
+			// Reverse to get chronological order
+			$messages = array_reverse($messages);
+
+			$this->debug('Sending history response with ' . count($messages) . ' messages');
+
+			$response = new websocket_message();
+			$response->service_name(self::get_service_name());
+			$response->topic('history_response');
+			$response->status_string('ok');
+			$response->status_code(200);
+			$response->request_id($websocket_message->request_id());
+			$response->resource_id($websocket_message->resource_id());
+			$response->payload([
+				'success' => true,
+				'thread_number' => $thread_number,
+				'messages' => $messages
+			]);
+
+			// Use to_json() or (string) cast to properly serialize the response
+			$this->debug('Response JSON: ' . $response->to_json());
+			$this->respond($response);
+			$this->debug('History response sent successfully');
+
+		} catch (\Exception $e) {
+			$this->error('History request failed: ' . $e->getMessage());
+
+			$response = new websocket_message();
+			$response->service_name(self::get_service_name());
+			$response->topic('history_response');
+			$response->status_string('error');
+			$response->status_code(400);
+			$response->request_id($websocket_message->request_id());
+			$response->resource_id($websocket_message->resource_id());
+			$response->payload([
+				'success' => false,
+				'error' => $e->getMessage()
+			]);
+			$this->respond($response);
+		}
+	}
+
+	/**
+	 * Handle mark read request from clients
+	 *
+	 * @param websocket_message $websocket_message
+	 */
+	protected function handle_mark_read_request(websocket_message $websocket_message): void {
+		$this->debug('Handling mark read request');
+
+		try {
+			$payload = $websocket_message->payload();
+			$message_uuids = $payload['message_uuids'] ?? [];
+
+			if (empty($message_uuids)) {
+				throw new \InvalidArgumentException('Message UUIDs are required');
+			}
+
+			// Get domain_uuid from the authenticated websocket message
+			$domain_uuid = $websocket_message->domain_uuid();
+			if (empty($domain_uuid)) {
+				throw new \InvalidArgumentException('Domain UUID is required');
+			}
+
+			// Get database singleton instance
+			$database = database::new();
+
+			// Update messages as read (with domain_uuid filter for security)
+			foreach ($message_uuids as $uuid) {
+				if (!is_uuid($uuid)) continue;
+
+				$sql = "UPDATE v_messages SET message_read = true WHERE message_uuid = :message_uuid AND domain_uuid = :domain_uuid";
+				$database->execute($sql, ['message_uuid' => $uuid, 'domain_uuid' => $domain_uuid]);
+			}
+
+			$response = new websocket_message();
+			$response->service_name(self::get_service_name());
+			$response->topic('mark_read_response');
+			$response->status_string('ok');
+			$response->status_code(200);
+			$response->request_id($websocket_message->request_id());
+			$response->resource_id($websocket_message->resource_id());
+			$response->payload([
+				'success' => true,
+				'marked_count' => count($message_uuids)
+			]);
+			$this->respond($response);
+
+		} catch (\Exception $e) {
+			$this->error('Mark read request failed: ' . $e->getMessage());
+
+			$response = new websocket_message();
+			$response->service_name(self::get_service_name());
+			$response->topic('mark_read_response');
+			$response->status_string('error');
+			$response->status_code(400);
+			$response->request_id($websocket_message->request_id());
+			$response->resource_id($websocket_message->resource_id());
+			$response->payload([
+				'success' => false,
+				'error' => $e->getMessage()
+			]);
+			$this->respond($response);
+		}
+	}
+
 
 	/**
 	 * Connects to the switch event socket
@@ -190,6 +381,10 @@ class opensms_service extends base_websocket_system_service {
 		// Broadcast to websocket clients
 		$this->broadcast_message_event($event);
 
+		// Set global $settings for opensms::broadcast_event()
+		global $settings;
+		$settings = $this->settings;
+
 		// Send to provider (outbound routing)
 		opensms::broadcast_event($event);
 	}
@@ -266,6 +461,10 @@ class opensms_service extends base_websocket_system_service {
 			$message->from_number = $payload['from_number'];
 			$message->sms = $payload['message_text'] ?? '';
 			$message->type = $payload['message_type'] ?? 'sms';
+			$message->domain_uuid = $websocket_message->domain_uuid();
+			$message->user_uuid = $payload['user_uuid'] ?? '';
+			$message->destination_uuid = $payload['from_destination_uuid'] ?? '';
+			$message->time = date('Y-m-d H:i:s');
 
 			// Get adapters and send
 			$auto_loader = new auto_loader(true);
@@ -274,10 +473,14 @@ class opensms_service extends base_websocket_system_service {
 
 			foreach ($adapters as $adapter_class) {
 				$this->debug('Checking adapter: ' . $adapter_class);
-				if ($provider_uuid === $adapter_class::get_provider_uuid()) {
-					$this->debug('Found matching adapter, sending...');
-					$success = $adapter_class::send($this->settings ?? new settings(), $message);
-					break;
+				// Use constant instead of method call
+				if (defined($adapter_class . '::OPENSMS_PROVIDER_UUID')) {
+					$adapter_provider_uuid = constant($adapter_class . '::OPENSMS_PROVIDER_UUID');
+					if ($provider_uuid === $adapter_provider_uuid) {
+						$this->debug('Found matching adapter, sending...');
+						$success = $adapter_class::send($this->settings ?? new settings(), $message);
+						break;
+					}
 				}
 			}
 
@@ -294,6 +497,10 @@ class opensms_service extends base_websocket_system_service {
 			$response = new websocket_message();
 			$response->service_name(self::get_service_name());
 			$response->topic('send_response');
+			$response->status_string('ok');
+			$response->status_code(200);
+			$response->request_id($websocket_message->request_id());
+			$response->resource_id($websocket_message->resource_id());
 			$response->payload([
 				'success' => true,
 				'message_uuid' => $message->uuid,
@@ -307,6 +514,10 @@ class opensms_service extends base_websocket_system_service {
 			$response = new websocket_message();
 			$response->service_name(self::get_service_name());
 			$response->topic('send_response');
+			$response->status_string('error');
+			$response->status_code(400);
+			$response->request_id($websocket_message->request_id());
+			$response->resource_id($websocket_message->resource_id());
 			$response->payload([
 				'success' => false,
 				'error' => $e->getMessage()
@@ -390,6 +601,302 @@ class opensms_service extends base_websocket_system_service {
 
 		$database->save($message_array);
 		$this->debug('Saved sent message to database: ' . $message->uuid);
+	}
+
+	/**
+	 * Normalize a phone number for consistent matching.
+	 */
+	private function normalize_number(string $value): string {
+		$digits = preg_replace('/\D/', '', $value);
+		if (strlen($digits) === 11 && strpos($digits, '1') === 0) {
+			return substr($digits, 1);
+		}
+		return $digits;
+	}
+
+	/**
+	 * Upsert a user setting entry.
+	 */
+	private function upsert_user_setting(string $domain_uuid, string $user_uuid, string $subcategory, string $name, string $value, bool $enabled = true): void {
+		$database = database::new();
+		$sql = "select user_setting_uuid from v_user_settings ";
+		$sql .= "where domain_uuid = :domain_uuid ";
+		$sql .= "and user_uuid = :user_uuid ";
+		$sql .= "and user_setting_category = 'opensms' ";
+		$sql .= "and user_setting_subcategory = :subcategory ";
+		$sql .= "and user_setting_name = :name ";
+		$parameters = [
+			'domain_uuid' => $domain_uuid,
+			'user_uuid' => $user_uuid,
+			'subcategory' => $subcategory,
+			'name' => $name,
+		];
+		$user_setting_uuid = $database->select($sql, $parameters, 'column');
+		$user_setting_uuid = is_array($user_setting_uuid) ? ($user_setting_uuid[0] ?? null) : $user_setting_uuid;
+
+		$array['user_settings'][0]['user_setting_uuid'] = $user_setting_uuid ?: uuid();
+		$array['user_settings'][0]['domain_uuid'] = $domain_uuid;
+		$array['user_settings'][0]['user_uuid'] = $user_uuid;
+		$array['user_settings'][0]['user_setting_category'] = 'opensms';
+		$array['user_settings'][0]['user_setting_subcategory'] = $subcategory;
+		$array['user_settings'][0]['user_setting_name'] = $name;
+		$array['user_settings'][0]['user_setting_value'] = $value;
+		$array['user_settings'][0]['user_setting_enabled'] = $enabled ? 'true' : 'false';
+
+		$database->save($array);
+	}
+
+	/**
+	 * Delete a user setting entry.
+	 */
+	private function delete_user_setting(string $domain_uuid, string $user_uuid, string $subcategory, string $name): void {
+		$database = database::new();
+		$sql = "delete from v_user_settings ";
+		$sql .= "where domain_uuid = :domain_uuid ";
+		$sql .= "and user_uuid = :user_uuid ";
+		$sql .= "and user_setting_category = 'opensms' ";
+		$sql .= "and user_setting_subcategory = :subcategory ";
+		$sql .= "and user_setting_name = :name ";
+		$parameters = [
+			'domain_uuid' => $domain_uuid,
+			'user_uuid' => $user_uuid,
+			'subcategory' => $subcategory,
+			'name' => $name,
+		];
+		$database->execute($sql, $parameters);
+	}
+
+	/**
+	 * List user settings by subcategory.
+	 */
+	private function list_user_settings(string $domain_uuid, string $user_uuid, string $subcategory): array {
+		$database = database::new();
+		$sql = "select user_setting_name from v_user_settings ";
+		$sql .= "where domain_uuid = :domain_uuid ";
+		$sql .= "and user_uuid = :user_uuid ";
+		$sql .= "and user_setting_category = 'opensms' ";
+		$sql .= "and user_setting_subcategory = :subcategory ";
+		$sql .= "and user_setting_enabled = 'true' ";
+		$parameters = [
+			'domain_uuid' => $domain_uuid,
+			'user_uuid' => $user_uuid,
+			'subcategory' => $subcategory,
+		];
+		$rows = $database->select($sql, $parameters, 'all');
+		if (!is_array($rows)) {
+			return [];
+		}
+		return array_values(array_filter(array_map(function ($row) {
+			return $row['user_setting_name'] ?? null;
+		}, $rows)));
+	}
+
+	/**
+	 * Handle block number request.
+	 */
+	protected function handle_block_number_request(websocket_message $websocket_message): void {
+		try {
+			$payload = $websocket_message->payload();
+			$number = $this->normalize_number($payload['number'] ?? '');
+			$user_uuid = $payload['user_uuid'] ?? '';
+			$domain_uuid = $websocket_message->domain_uuid();
+			if (empty($number) || empty($user_uuid) || empty($domain_uuid)) {
+				throw new \InvalidArgumentException('Missing required fields');
+			}
+			$this->upsert_user_setting($domain_uuid, $user_uuid, 'blocked_number', $number, 'true', true);
+			$response = new websocket_message();
+			$response->service_name(self::get_service_name());
+			$response->topic('block_number_response');
+			$response->status_string('ok');
+			$response->status_code(200);
+			$response->request_id($websocket_message->request_id());
+			$response->resource_id($websocket_message->resource_id());
+			$response->payload(['success' => true, 'number' => $number]);
+			$this->respond($response);
+		} catch (\Exception $e) {
+			$response = new websocket_message();
+			$response->service_name(self::get_service_name());
+			$response->topic('block_number_response');
+			$response->status_string('error');
+			$response->status_code(400);
+			$response->request_id($websocket_message->request_id());
+			$response->resource_id($websocket_message->resource_id());
+			$response->payload(['success' => false, 'error' => $e->getMessage()]);
+			$this->respond($response);
+		}
+	}
+
+	/**
+	 * Handle unblock number request.
+	 */
+	protected function handle_unblock_number_request(websocket_message $websocket_message): void {
+		try {
+			$payload = $websocket_message->payload();
+			$number = $this->normalize_number($payload['number'] ?? '');
+			$user_uuid = $payload['user_uuid'] ?? '';
+			$domain_uuid = $websocket_message->domain_uuid();
+			if (empty($number) || empty($user_uuid) || empty($domain_uuid)) {
+				throw new \InvalidArgumentException('Missing required fields');
+			}
+			$this->delete_user_setting($domain_uuid, $user_uuid, 'blocked_number', $number);
+			$response = new websocket_message();
+			$response->service_name(self::get_service_name());
+			$response->topic('unblock_number_response');
+			$response->status_string('ok');
+			$response->status_code(200);
+			$response->request_id($websocket_message->request_id());
+			$response->resource_id($websocket_message->resource_id());
+			$response->payload(['success' => true, 'number' => $number]);
+			$this->respond($response);
+		} catch (\Exception $e) {
+			$response = new websocket_message();
+			$response->service_name(self::get_service_name());
+			$response->topic('unblock_number_response');
+			$response->status_string('error');
+			$response->status_code(400);
+			$response->request_id($websocket_message->request_id());
+			$response->resource_id($websocket_message->resource_id());
+			$response->payload(['success' => false, 'error' => $e->getMessage()]);
+			$this->respond($response);
+		}
+	}
+
+	/**
+	 * Handle list blocked numbers request.
+	 */
+	protected function handle_list_blocked_request(websocket_message $websocket_message): void {
+		try {
+			$payload = $websocket_message->payload();
+			$user_uuid = $payload['user_uuid'] ?? '';
+			$domain_uuid = $websocket_message->domain_uuid();
+			if (empty($user_uuid) || empty($domain_uuid)) {
+				throw new \InvalidArgumentException('Missing required fields');
+			}
+			$numbers = $this->list_user_settings($domain_uuid, $user_uuid, 'blocked_number');
+			$response = new websocket_message();
+			$response->service_name(self::get_service_name());
+			$response->topic('list_blocked_response');
+			$response->status_string('ok');
+			$response->status_code(200);
+			$response->request_id($websocket_message->request_id());
+			$response->resource_id($websocket_message->resource_id());
+			$response->payload(['success' => true, 'numbers' => $numbers]);
+			$this->respond($response);
+		} catch (\Exception $e) {
+			$response = new websocket_message();
+			$response->service_name(self::get_service_name());
+			$response->topic('list_blocked_response');
+			$response->status_string('error');
+			$response->status_code(400);
+			$response->request_id($websocket_message->request_id());
+			$response->resource_id($websocket_message->resource_id());
+			$response->payload(['success' => false, 'error' => $e->getMessage()]);
+			$this->respond($response);
+		}
+	}
+
+	/**
+	 * Handle hide thread request (user-only delete).
+	 */
+	protected function handle_hide_thread_request(websocket_message $websocket_message): void {
+		try {
+			$payload = $websocket_message->payload();
+			$thread = trim($payload['thread_number'] ?? '');
+			$user_uuid = $payload['user_uuid'] ?? '';
+			$domain_uuid = $websocket_message->domain_uuid();
+			if (empty($thread) || empty($user_uuid) || empty($domain_uuid)) {
+				throw new \InvalidArgumentException('Missing required fields');
+			}
+			$this->upsert_user_setting($domain_uuid, $user_uuid, 'hidden_thread', $thread, 'true', true);
+			$response = new websocket_message();
+			$response->service_name(self::get_service_name());
+			$response->topic('hide_thread_response');
+			$response->status_string('ok');
+			$response->status_code(200);
+			$response->request_id($websocket_message->request_id());
+			$response->resource_id($websocket_message->resource_id());
+			$response->payload(['success' => true, 'thread_number' => $thread]);
+			$this->respond($response);
+		} catch (\Exception $e) {
+			$response = new websocket_message();
+			$response->service_name(self::get_service_name());
+			$response->topic('hide_thread_response');
+			$response->status_string('error');
+			$response->status_code(400);
+			$response->request_id($websocket_message->request_id());
+			$response->resource_id($websocket_message->resource_id());
+			$response->payload(['success' => false, 'error' => $e->getMessage()]);
+			$this->respond($response);
+		}
+	}
+
+	/**
+	 * Handle unhide thread request.
+	 */
+	protected function handle_unhide_thread_request(websocket_message $websocket_message): void {
+		try {
+			$payload = $websocket_message->payload();
+			$thread = trim($payload['thread_number'] ?? '');
+			$user_uuid = $payload['user_uuid'] ?? '';
+			$domain_uuid = $websocket_message->domain_uuid();
+			if (empty($thread) || empty($user_uuid) || empty($domain_uuid)) {
+				throw new \InvalidArgumentException('Missing required fields');
+			}
+			$this->delete_user_setting($domain_uuid, $user_uuid, 'hidden_thread', $thread);
+			$response = new websocket_message();
+			$response->service_name(self::get_service_name());
+			$response->topic('unhide_thread_response');
+			$response->status_string('ok');
+			$response->status_code(200);
+			$response->request_id($websocket_message->request_id());
+			$response->resource_id($websocket_message->resource_id());
+			$response->payload(['success' => true, 'thread_number' => $thread]);
+			$this->respond($response);
+		} catch (\Exception $e) {
+			$response = new websocket_message();
+			$response->service_name(self::get_service_name());
+			$response->topic('unhide_thread_response');
+			$response->status_string('error');
+			$response->status_code(400);
+			$response->request_id($websocket_message->request_id());
+			$response->resource_id($websocket_message->resource_id());
+			$response->payload(['success' => false, 'error' => $e->getMessage()]);
+			$this->respond($response);
+		}
+	}
+
+	/**
+	 * Handle list hidden threads request.
+	 */
+	protected function handle_list_hidden_request(websocket_message $websocket_message): void {
+		try {
+			$payload = $websocket_message->payload();
+			$user_uuid = $payload['user_uuid'] ?? '';
+			$domain_uuid = $websocket_message->domain_uuid();
+			if (empty($user_uuid) || empty($domain_uuid)) {
+				throw new \InvalidArgumentException('Missing required fields');
+			}
+			$threads = $this->list_user_settings($domain_uuid, $user_uuid, 'hidden_thread');
+			$response = new websocket_message();
+			$response->service_name(self::get_service_name());
+			$response->topic('list_hidden_response');
+			$response->status_string('ok');
+			$response->status_code(200);
+			$response->request_id($websocket_message->request_id());
+			$response->resource_id($websocket_message->resource_id());
+			$response->payload(['success' => true, 'threads' => $threads]);
+			$this->respond($response);
+		} catch (\Exception $e) {
+			$response = new websocket_message();
+			$response->service_name(self::get_service_name());
+			$response->topic('list_hidden_response');
+			$response->status_string('error');
+			$response->status_code(400);
+			$response->request_id($websocket_message->request_id());
+			$response->resource_id($websocket_message->resource_id());
+			$response->payload(['success' => false, 'error' => $e->getMessage()]);
+			$this->respond($response);
+		}
 	}
 
 	/**
