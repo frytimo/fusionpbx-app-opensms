@@ -105,4 +105,3 @@ const opensms_text = {$text|@json_encode nofilter};
 
 <script src="{$app_path}/resources/javascript/websocket_client.js?v={$ws_client_hash|default:"1"}"></script>
 <script src="{$app_path}/resources/javascript/opensms_ui.js?v={$ui_js_hash|default:"1"}"></script>
-
