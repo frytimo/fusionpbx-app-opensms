@@ -361,18 +361,29 @@ class opensms_ws_client {
 	}
 
 	/**
-	 * Send an SMS message via websocket
+	 * Send an SMS or MMS message via websocket
+	 * @param {string} fromDestinationUuid
+	 * @param {string} fromNumber
+	 * @param {string} toNumber
+	 * @param {string} messageText
+	 * @param {string} domainUuid
+	 * @param {string} userUuid
+	 * @param {Array|null} mmsAttachments - Optional array of {content_type, data, filename}
 	 */
-	sendMessage(fromDestinationUuid, fromNumber, toNumber, messageText, domainUuid, userUuid) {
-		return this.request('opensms', 'send', {
+	sendMessage(fromDestinationUuid, fromNumber, toNumber, messageText, domainUuid, userUuid, mmsAttachments = null) {
+		const payload = {
 			from_destination_uuid: fromDestinationUuid,
 			from_number: fromNumber,
 			to_number: toNumber,
 			message_text: messageText,
-			message_type: 'sms',
+			message_type: (mmsAttachments && mmsAttachments.length > 0) ? 'mms' : 'sms',
 			domain_uuid: domainUuid,
 			user_uuid: userUuid
-		});
+		};
+		if (mmsAttachments && mmsAttachments.length > 0) {
+			payload.mms = mmsAttachments;
+		}
+		return this.request('opensms', 'send', payload);
 	}
 
 	/**

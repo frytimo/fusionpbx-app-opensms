@@ -382,6 +382,29 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 			'tag'           => $message->uuid,
 		];
 
+		// Include MMS media URLs if present
+		if (!empty($message->mms) && is_array($message->mms)) {
+			$media_urls = [];
+			foreach ($message->mms as $index => $part) {
+				if (!empty($part['url'])) {
+					$media_urls[] = $part['url'];
+				} elseif (!empty($part['data']) && !empty($part['content_type'])) {
+					// Upload base64 media to Bandwidth Media API first, then reference the URL
+					// Bandwidth requires publicly accessible HTTP/HTTPS URLs — data URIs are not supported
+					$ext_parts = explode('/', $part['content_type']);
+					$ext = $ext_parts[1] ?? 'bin';
+					$media_name = 'opensms-' . $message->uuid . '-' . $index . '.' . $ext;
+					$upload_start = microtime(true);
+					$media_urls[] = self::upload_media($settings, $part['data'], $part['content_type'], $media_name);
+					$upload_ms = round((microtime(true) - $upload_start) * 1000);
+					error_log("[opensms] Media upload [{$index}] completed in {$upload_ms}ms: {$media_name}");
+				}
+			}
+			if (!empty($media_urls)) {
+				$payload['media'] = $media_urls;
+			}
+		}
+
 		// Prepare the request curl client
 		$curl_client = new curl_client();
 
@@ -404,10 +427,80 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 		$http_code = $response['info']['http_code'] ?? 0;
 		if ($http_code < 200 || $http_code >= 300) {
 			$body = $response['content'] ?? '';
+			// Truncate long response bodies (e.g. those echoing back base64 data) to keep logs readable
+			if (strlen($body) > 500) {
+				$body = substr($body, 0, 500) . '... [truncated]';
+			}
 			throw new \RuntimeException("Bandwidth API returned HTTP {$http_code}: {$body}");
 		}
 
 		return true;
+	}
+
+	/**
+	 * Upload media to Bandwidth's Media API for use in MMS messages.
+	 *
+	 * Bandwidth requires MMS media to be referenced by publicly accessible URLs.
+	 * This method uploads base64-encoded media via PUT to the Bandwidth Media API,
+	 * then returns the URL where the media is accessible.
+	 *
+	 * @param settings $settings     Configuration container.
+	 * @param string   $base64_data  The base64-encoded media data.
+	 * @param string   $content_type The MIME type of the media (e.g. image/jpeg).
+	 * @param string   $media_name   A unique name for the media resource.
+	 *
+	 * @return string The URL where the uploaded media is accessible.
+	 * @throws \curl_exception    If the upload request fails at the transport level.
+	 * @throws \RuntimeException  If the API returns a non-2xx status.
+	 */
+	private static function upload_media(settings $settings, string $base64_data, string $content_type, string $media_name): string {
+
+		$account_id = $settings->get(self::OPENSMS_PROVIDER_NAME, 'account_id', '');
+		$api_username = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_token', '');
+		$api_password = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_secret', '');
+		if (empty($api_username)) {
+			$api_username = $settings->get(self::OPENSMS_PROVIDER_NAME, 'callback_user_id', '');
+		}
+		if (empty($api_password)) {
+			$api_password = $settings->get(self::OPENSMS_PROVIDER_NAME, 'callback_password', '');
+		}
+
+		// URL-encode the media name to handle special characters
+		$encoded_name = rawurlencode($media_name);
+		$media_url = "https://messaging.bandwidth.com/api/v2/users/{$account_id}/media/{$encoded_name}";
+
+		// Decode base64 to raw binary for upload
+		$binary_data = base64_decode($base64_data, true);
+		if ($binary_data === false) {
+			throw new \RuntimeException('Failed to decode base64 media data');
+		}
+
+		$curl_client = new curl_client();
+		$response = $curl_client->request($media_url, 'PUT', [
+			CURLOPT_CUSTOMREQUEST => 'PUT',
+			CURLOPT_POSTFIELDS    => $binary_data,
+			'headers' => [
+				'Content-Type: ' . $content_type,
+				'Content-Length: ' . strlen($binary_data),
+			],
+			'username' => $api_username,
+			'password' => $api_password,
+		]);
+
+		if (!empty($response['error'])) {
+			throw new curl_exception('Error uploading media to Bandwidth: ' . $response['error']);
+		}
+
+		$http_code = $response['info']['http_code'] ?? 0;
+		if ($http_code < 200 || $http_code >= 300) {
+			$body = $response['content'] ?? '';
+			if (strlen($body) > 500) {
+				$body = substr($body, 0, 500) . '... [truncated]';
+			}
+			throw new \RuntimeException("Bandwidth Media upload returned HTTP {$http_code}: {$body}");
+		}
+
+		return $media_url;
 	}
 
 	/**
@@ -475,7 +568,23 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 				continue;
 			}
 			$media_content = $response['content'];
-			$media_files[] = $media_content;
+			if (empty($media_content)) {
+				continue;
+			}
+			// Determine content type from the response or URL
+			$content_type = $response['info']['content_type'] ?? 'application/octet-stream';
+			// Strip charset suffix if present (e.g. "image/jpeg; charset=UTF-8")
+			if (strpos($content_type, ';') !== false) {
+				$content_type = trim(explode(';', $content_type)[0]);
+			}
+			$filename = basename(parse_url($media_link, PHP_URL_PATH)) ?: 'media';
+			$media_files[] = [
+				'content_type' => $content_type,
+				'data'         => base64_encode($media_content),
+				'url'          => $media_link,
+				'filename'     => $filename,
+				'size'         => strlen($media_content),
+			];
 		}
 		return $media_files;
 	}

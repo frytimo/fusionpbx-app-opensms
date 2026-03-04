@@ -103,7 +103,7 @@ class opensms_message_database_writer implements opensms_message_listener {
 	 * Handle a delivery receipt by updating the original outbound message.
 	 *
 	 * Looks up the original message by UUID (stored in Bandwidth's tag field during send)
-	 * and updates its message_json with the delivery status information.
+	 * and merges the delivery status information into the existing message_json.
 	 *
 	 * @param settings        $settings
 	 * @param opensms_message $message The delivery receipt message
@@ -118,25 +118,40 @@ class opensms_message_database_writer implements opensms_message_listener {
 			return;
 		}
 
-		// Build a delivery status JSON to store
-		$delivery_info = json_encode([
+		// Build a delivery status JSON to merge into the existing message_json
+		$delivery_info = [
 			'delivery_status' => $message->delivery_status,
 			'delivery_time'   => $message->time ?: date('Y-m-d H:i:s'),
 			'delivery_detail' => $message->sms,
-		]);
+		];
 
-		// Update the original outbound message with delivery status
-		$sql  = "UPDATE v_messages SET ";
-		$sql .= "message_json = :delivery_info, ";
-		$sql .= "update_date = now() ";
+		// Retrieve the existing message_json so we can merge instead of overwrite
+		$sql = "SELECT message_json FROM v_messages ";
 		$sql .= "WHERE message_uuid = :message_uuid ";
 		$sql .= "AND message_direction = 'outbound'";
 
 		$p = permissions::new();
 		$p->add('message_edit', 'temp');
 
+		$existing = $database->select($sql, ['message_uuid' => $original_uuid], 'row');
+
+		$merged = $delivery_info;
+		if (!empty($existing['message_json'])) {
+			$existing_json = json_decode($existing['message_json'], true);
+			if (is_array($existing_json)) {
+				$merged = array_merge($existing_json, $delivery_info);
+			}
+		}
+
+		// Update the original outbound message with merged delivery status
+		$sql  = "UPDATE v_messages SET ";
+		$sql .= "message_json = :delivery_info, ";
+		$sql .= "update_date = now() ";
+		$sql .= "WHERE message_uuid = :message_uuid ";
+		$sql .= "AND message_direction = 'outbound'";
+
 		$database->execute($sql, [
-			'delivery_info' => $delivery_info,
+			'delivery_info' => json_encode($merged),
 			'message_uuid'  => $original_uuid,
 		]);
 	}

@@ -95,6 +95,28 @@
 	}
 
 	/**
+	 * Extract MMS parts from a message object.
+	 * Handles both real-time websocket messages (msg.mms) and
+	 * history messages (msg.message_json containing the full object).
+	 */
+	function getMmsParts(msg) {
+		// Direct MMS array from real-time websocket messages
+		if (msg.mms && Array.isArray(msg.mms) && msg.mms.length > 0) {
+			return msg.mms;
+		}
+		// MMS embedded in message_json from database history
+		if (msg.message_json) {
+			try {
+				const parsed = typeof msg.message_json === 'string' ? JSON.parse(msg.message_json) : msg.message_json;
+				if (parsed && parsed.mms && Array.isArray(parsed.mms) && parsed.mms.length > 0) {
+					return parsed.mms;
+				}
+			} catch (e) { /* ignore parse errors */ }
+		}
+		return null;
+	}
+
+	/**
 	 * Escape HTML to prevent XSS
 	 */
 	function escapeHtml(str) {
@@ -179,7 +201,53 @@
 
 		const body = document.createElement("div");
 		body.className = "opensms_bubble_body";
-		body.innerHTML = escapeHtml(msg.message_text || msg.body || '').replace(/\n/g, "<br>");
+
+		// Render MMS media if present
+		const mmsParts = getMmsParts(msg);
+		if (mmsParts && mmsParts.length > 0) {
+			mmsParts.forEach(function (part) {
+				const ct = (part.content_type || '').toLowerCase();
+				if (ct.startsWith('image/')) {
+					const img = document.createElement('img');
+					img.className = 'opensms_bubble_media';
+					img.alt = part.filename || 'Image';
+					if (part.data) {
+						img.src = 'data:' + ct + ';base64,' + part.data;
+					} else if (part.url) {
+						img.src = part.url;
+					}
+					body.appendChild(img);
+				} else if (ct.startsWith('video/')) {
+					const video = document.createElement('video');
+					video.className = 'opensms_bubble_media';
+					video.controls = true;
+					if (part.data) {
+						video.src = 'data:' + ct + ';base64,' + part.data;
+					} else if (part.url) {
+						video.src = part.url;
+					}
+					body.appendChild(video);
+				} else if (ct.startsWith('audio/')) {
+					const audio = document.createElement('audio');
+					audio.className = 'opensms_bubble_media_audio';
+					audio.controls = true;
+					if (part.data) {
+						audio.src = 'data:' + ct + ';base64,' + part.data;
+					} else if (part.url) {
+						audio.src = part.url;
+					}
+					body.appendChild(audio);
+				}
+			});
+		}
+
+		// Render text content
+		const textContent = msg.message_text || msg.body || '';
+		if (textContent) {
+			const textDiv = document.createElement('div');
+			textDiv.innerHTML = escapeHtml(textContent).replace(/\n/g, "<br>");
+			body.appendChild(textDiv);
+		}
 
 		const meta = document.createElement("div");
 		meta.className = "opensms_bubble_meta";
@@ -363,7 +431,8 @@
 				direction: data.direction || 'inbound',
 				message_text: data.message_text || data.sms,
 				message_time: data.message_time || new Date().toISOString(),
-				status: data.status
+				status: data.status,
+				mms: data.mms || null
 			});
 
 			// Mark as read if inbound
@@ -576,6 +645,85 @@
 			});
 	}
 
+	// Pending file attachments for the next send
+	let pendingAttachments = [];
+
+	/**
+	 * Read a File object as a base64-encoded attachment object.
+	 * Returns a Promise that resolves to {content_type, data, filename, size}.
+	 */
+	function readFileAsAttachment(file) {
+		return new Promise(function (resolve, reject) {
+			const reader = new FileReader();
+			reader.onload = function () {
+				// result is "data:<type>;base64,<data>"
+				const base64 = reader.result.split(',')[1] || '';
+				resolve({
+					content_type: file.type || 'application/octet-stream',
+					data: base64,
+					filename: file.name,
+					size: file.size
+				});
+			};
+			reader.onerror = function () { reject(reader.error); };
+			reader.readAsDataURL(file);
+		});
+	}
+
+	/**
+	 * Render attachment preview thumbnails below the textarea.
+	 */
+	function renderAttachmentPreview() {
+		let preview = $("opensms_attach_preview");
+		if (!preview) {
+			// Create preview container after the input wrapper
+			const wrapper = document.querySelector('.opensms_composer_input_wrapper');
+			if (!wrapper) return;
+			preview = document.createElement('div');
+			preview.id = 'opensms_attach_preview';
+			preview.className = 'opensms_attach_preview';
+			wrapper.parentNode.insertBefore(preview, wrapper.nextSibling);
+		}
+
+		preview.innerHTML = '';
+		if (pendingAttachments.length === 0) {
+			preview.style.display = 'none';
+			return;
+		}
+		preview.style.display = 'flex';
+
+		pendingAttachments.forEach(function (att, idx) {
+			const thumb = document.createElement('div');
+			thumb.className = 'opensms_attach_thumb';
+
+			if (att.content_type.startsWith('image/')) {
+				const img = document.createElement('img');
+				img.src = 'data:' + att.content_type + ';base64,' + att.data;
+				img.alt = att.filename;
+				thumb.appendChild(img);
+			} else {
+				const label = document.createElement('span');
+				label.className = 'opensms_attach_filename';
+				label.textContent = att.filename;
+				thumb.appendChild(label);
+			}
+
+			// Remove button
+			const removeBtn = document.createElement('button');
+			removeBtn.type = 'button';
+			removeBtn.className = 'opensms_attach_remove';
+			removeBtn.innerHTML = '&times;';
+			removeBtn.title = 'Remove';
+			removeBtn.addEventListener('click', function () {
+				pendingAttachments.splice(idx, 1);
+				renderAttachmentPreview();
+			});
+			thumb.appendChild(removeBtn);
+
+			preview.appendChild(thumb);
+		});
+	}
+
 	/**
 	 * Initialize send form
 	 */
@@ -583,8 +731,33 @@
 		const form = $("opensms_send_form");
 		const textarea = $("opensms_message_body");
 		const fromSelect = $("opensms_from_destination");
+		const attachBtn = $("opensms_btn_attach");
+		const fileInput = $("opensms_file_input");
 
 		if (!form || !textarea) return;
+
+		// Wire up attach button to trigger hidden file input
+		if (attachBtn && fileInput) {
+			attachBtn.addEventListener('click', function () {
+				fileInput.click();
+			});
+
+			fileInput.addEventListener('change', function () {
+				if (!fileInput.files || fileInput.files.length === 0) return;
+				const promises = [];
+				for (let i = 0; i < fileInput.files.length; i++) {
+					promises.push(readFileAsAttachment(fileInput.files[i]));
+				}
+				Promise.all(promises).then(function (attachments) {
+					pendingAttachments = pendingAttachments.concat(attachments);
+					renderAttachmentPreview();
+				}).catch(function (err) {
+					console.error('OpenSMS: Failed to read attachments:', err);
+				});
+				// Reset the file input so re-selecting the same file triggers change
+				fileInput.value = '';
+			});
+		}
 
 		// Update header when "from" destination changes
 		if (fromSelect && fromSelect.tagName === 'SELECT') {
@@ -608,7 +781,8 @@
 			ev.preventDefault();
 
 			const body = (textarea.value || "").trim();
-			if (!body) return;
+			const hasAttachments = pendingAttachments.length > 0;
+			if (!body && !hasAttachments) return;
 
 			const threadId = ($("opensms_active_thread_id").value || "").trim();
 			if (!threadId) {
@@ -643,20 +817,26 @@
 				return;
 			}
 
+			// Capture and clear attachments before sending
+			const mmsData = hasAttachments ? pendingAttachments.slice() : null;
+
 			// Create temporary UUID for tracking
 			const tempUuid = 'temp-' + Date.now();
 
-			// Optimistic UI - show message immediately
+			// Optimistic UI - show message immediately (including media)
 			appendMessageBubble({
 				message_uuid: tempUuid,
 				direction: "outbound",
 				message_text: body,
+				mms: mmsData,
 				message_time: new Date().toISOString(),
 				status: "sending"
 			});
 
-			// Clear textarea
+			// Clear textarea and attachments
 			textarea.value = "";
+			pendingAttachments = [];
+			renderAttachmentPreview();
 
 			// Send via WebSocket
 			if (wsClient && wsClient.isConnected()) {
@@ -666,7 +846,8 @@
 					threadId,  // to_number is the thread ID
 					body,
 					typeof opensms_domain_uuid !== 'undefined' ? opensms_domain_uuid : '',
-					typeof opensms_user_uuid !== 'undefined' ? opensms_user_uuid : ''
+					typeof opensms_user_uuid !== 'undefined' ? opensms_user_uuid : '',
+					mmsData
 				).then(function (response) {
 					// Update temp message with real UUID so delivery receipts can find it
 					const tempEl = document.querySelector(`[data-message-uuid="${tempUuid}"]`);
@@ -936,9 +1117,15 @@
 					applyHiddenThreads();
 				});
 			}
-			// If we have an active thread, reload its messages
+			// If we have an active thread, reload its messages only if
+			// the chat area is empty (first load or was showing empty state).
+			// On reconnect we don't want to clear already visible messages.
 			if (activeThread) {
-				loadThreadMessages(activeThread);
+				const mc = $("opensms_messages");
+				const hasMessages = mc && mc.querySelector('.opensms_bubble_row');
+				if (!hasMessages) {
+					loadThreadMessages(activeThread);
+				}
 			}
 		});
 

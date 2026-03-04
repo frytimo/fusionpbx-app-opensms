@@ -49,9 +49,12 @@ class opensms_message_websocket_writer implements opensms_message_listener {
 				}
 			}
 
-			// Authenticate as the opensms service to allow broadcasting
+			// Authenticate as a broadcast-only opensms service using a unique name
+			// to avoid colliding with the long-running opensms_service in the
+			// websocket router's service registry
+			$broadcast_service_name = 'opensms_broadcast_' . uniqid();
 			[$token_name, $token_hash] = websocket_client::create_service_token(
-				opensms_service::get_service_name(),
+				$broadcast_service_name,
 				opensms_service::class
 			);
 			$ws_client->authenticate($token_name, $token_hash);

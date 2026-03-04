@@ -453,7 +453,10 @@ class opensms_service extends base_websocket_system_service {
 				throw new \Exception('No provider found for destination');
 			}
 
-			$this->debug('Sending message via provider: ' . $provider_uuid);
+			// Look up the provider name to match against adapters
+			$provider_name = $this->get_provider_name($provider_uuid);
+
+			$this->info('Sending message via provider: ' . $provider_name . ' (' . $provider_uuid . ')');
 
 			// Create message object
 			$message = new opensms_message(uuid(), $provider_uuid);
@@ -466,26 +469,36 @@ class opensms_service extends base_websocket_system_service {
 			$message->destination_uuid = $payload['from_destination_uuid'] ?? '';
 			$message->time = date('Y-m-d H:i:s');
 
+			// Attach MMS media if present
+			if (!empty($payload['mms']) && is_array($payload['mms'])) {
+				$message->mms = $payload['mms'];
+				$message->type = 'mms';
+			}
+
 			// Get adapters and send
 			$auto_loader = new auto_loader(true);
 			$auto_loader->reload_classes();
 			$adapters = $auto_loader->get_interface_list('opensms_message_adapter');
 
+			$success = false;
 			foreach ($adapters as $adapter_class) {
-				$this->debug('Checking adapter: ' . $adapter_class);
-				// Use constant instead of method call
-				if (defined($adapter_class . '::OPENSMS_PROVIDER_UUID')) {
-					$adapter_provider_uuid = constant($adapter_class . '::OPENSMS_PROVIDER_UUID');
-					if ($provider_uuid === $adapter_provider_uuid) {
-						$this->debug('Found matching adapter, sending...');
+				// Match by provider name (case-insensitive) rather than UUID
+				// since the database provider_uuid may differ from the adapter constant
+				if (defined($adapter_class . '::OPENSMS_PROVIDER_NAME')) {
+					$adapter_provider_name = constant($adapter_class . '::OPENSMS_PROVIDER_NAME');
+					if (!empty($provider_name) && strcasecmp($provider_name, $adapter_provider_name) === 0) {
+						$this->info('Found matching adapter: ' . $adapter_class);
+						$send_start = microtime(true);
 						$success = $adapter_class::send($this->settings ?? new settings(), $message);
+						$send_elapsed = round((microtime(true) - $send_start) * 1000);
+						$this->info("Adapter send completed in {$send_elapsed}ms");
 						break;
 					}
 				}
 			}
 
-			if (!isset($success) || !$success) {
-				throw new \Exception('Failed to send message via provider');
+			if (!$success) {
+				throw new \Exception('Failed to send message via provider' . ($provider_name ? " '{$provider_name}'" : ''));
 			}
 
 			$this->debug('Message sent successfully');
@@ -508,7 +521,12 @@ class opensms_service extends base_websocket_system_service {
 			]);
 
 		} catch (\Exception $e) {
-			$this->error('Send failed: ' . $e->getMessage());
+			$error_msg = $e->getMessage();
+			// Truncate very long error messages (e.g. those containing base64 data)
+			if (strlen($error_msg) > 600) {
+				$error_msg = substr($error_msg, 0, 600) . '... [truncated]';
+			}
+			$this->error('Send failed: ' . $error_msg);
 
 			// Respond with error
 			$response = new websocket_message();
@@ -536,18 +554,21 @@ class opensms_service extends base_websocket_system_service {
 	 */
 	private function validate_destination_access(string $destination_uuid, ?string $user_uuid = null): bool {
 		// Check if destination belongs to user or their groups
+		$resolved_user_uuid = $user_uuid ?: ($_SESSION['user']['user_uuid'] ?? '');
+
 		$sql = "SELECT COUNT(*) FROM v_destinations d ";
 		$sql .= "LEFT JOIN v_users u ON d.user_uuid = u.user_uuid ";
 		$sql .= "LEFT JOIN v_user_groups ug ON d.group_uuid = ug.group_uuid ";
 		$sql .= "WHERE d.destination_uuid = :destination_uuid ";
 		$sql .= "AND d.destination_type_text = 1 ";
 		$sql .= "AND d.destination_enabled = 'true' ";
-		$sql .= "AND (d.user_uuid = :user_uuid OR ug.user_uuid = :user_uuid)";
+		$sql .= "AND (d.user_uuid = :user_uuid1 OR ug.user_uuid = :user_uuid2)";
 
 		$database = parent::$database ?? new database();
 		$count = $database->select($sql, [
 			'destination_uuid' => $destination_uuid,
-			'user_uuid' => $user_uuid ?: ($_SESSION['user']['user_uuid'] ?? '')
+			'user_uuid1' => $resolved_user_uuid,
+			'user_uuid2' => $resolved_user_uuid,
 		], 'column');
 
 		return $count > 0;
@@ -563,6 +584,18 @@ class opensms_service extends base_websocket_system_service {
 		$sql = "SELECT provider_uuid FROM v_destinations WHERE destination_uuid = :destination_uuid";
 		$database = parent::$database ?? new database();
 		return $database->select($sql, ['destination_uuid' => $destination_uuid], 'column');
+	}
+
+	/**
+	 * Get provider name by its UUID
+	 *
+	 * @param string $provider_uuid
+	 * @return string|null
+	 */
+	private function get_provider_name(string $provider_uuid): ?string {
+		$sql = "SELECT provider_name FROM v_providers WHERE provider_uuid = :provider_uuid";
+		$database = parent::$database ?? new database();
+		return $database->select($sql, ['provider_uuid' => $provider_uuid], 'column');
 	}
 
 	/**

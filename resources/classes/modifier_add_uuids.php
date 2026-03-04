@@ -36,8 +36,7 @@ class modifier_add_uuids implements opensms_message_modifier {
 		$sql .= "	OR destination_number = :destination_number ";
 		$sql .= ") ";
 		$sql .= "and destination_enabled = true; ";
-		$parameters['destination_number'] = $message->to_number;
-		$parameters['destination_number'] = '19022012170';
+		$parameters['destination_number'] = $settings->database()->config()->get('opensms.debug.destination_number', $message->to_number);
 		$result = $database->select($sql, $parameters, 'row');
 
 		// Return a rejection to the provider here
@@ -46,20 +45,20 @@ class modifier_add_uuids implements opensms_message_modifier {
 		}
 
 		// Set the required UUIDs
-		$destination_uuid = $result['destination_uuid'] ?? null;
-		if (!empty($destination_uuid) && is_uuid($destination_uuid)) {
+		$destination_uuid = $result['destination_uuid'] ?? '';
+		if (is_uuid($destination_uuid)) {
 			$message->destination_uuid = $destination_uuid;
 		}
-		$user_uuid = $result['user_uuid'] ?? null;
-		if (!empty($user_uuid)) {
+		$user_uuid = $result['user_uuid'] ?? '';
+		if (is_uuid($user_uuid)) {
 			$message->user_uuids = [$user_uuid];
 		}
-		$group_uuid = $result['group_uuid'] ?? null;
-		if (!empty($group_uuid) && is_uuid($group_uuid)) {
+		$group_uuid = $result['group_uuid'] ?? '';
+		if (is_uuid($group_uuid)) {
 			$message->group_uuid = $group_uuid;
 		}
-		$domain_uuid = $result['domain_uuid'] ?? null;
-		if (!empty($domain_uuid) && is_uuid($domain_uuid)) {
+		$domain_uuid = $result['domain_uuid'] ?? '';
+		if (is_uuid($domain_uuid)) {
 			$message->domain_uuid = $domain_uuid;
 		}
 
