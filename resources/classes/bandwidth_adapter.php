@@ -7,13 +7,8 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 
 	const OPENSMS_PROVIDER_NAME = 'bandwidth';
 	const OPENSMS_PROVIDER_LABEL = 'Bandwidth SMS';
-	const OPENSMS_PROVIDER_VERSION = '1.0.0';
-	const OPENSMS_PROVIDER_AUTHOR = 'Tim Fry';
-	const OPENSMS_PROVIDER_WEBSITE = 'https://www.bandwidth.com';
 	const OPENSMS_PROVIDER_DESCRIPTION = 'Bandwidth SMS Gateway Integration';
 	const OPENSMS_PROVIDER_UUID = '491fa47c-1b82-4381-9a81-2c410cdfd770';
-	const OPENSMS_PROVIDER_SETTINGS_CATEGORY = 'opensms';
-	const OPENSMS_PROVIDER_SETTINGS_SUBCATEGORY = 'bandwidth';
 
 	const ACCESS_CONTROL_UUID = '4a43c9e0-69de-4c6d-bfa4-4cb591f8c1e3';
 
