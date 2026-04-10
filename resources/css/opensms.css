@@ -275,6 +275,70 @@
 	color: #dc3545;
 }
 
+.opensms_retry_btn {
+	border: 1px solid #dc3545;
+	background: #fff;
+	color: #dc3545;
+	border-radius: 999px;
+	font-size: 10px;
+	line-height: 1;
+	padding: 3px 8px;
+	cursor: pointer;
+}
+
+.opensms_retry_btn:hover {
+	background: #dc3545;
+	color: #fff;
+}
+
+.opensms_context_menu {
+	position: fixed;
+	z-index: 9999;
+	min-width: 190px;
+	padding: 6px;
+	border: 1px solid var(--opensms-border);
+	border-radius: 10px;
+	background: #ffffff;
+	box-shadow: 0 12px 30px rgba(0, 0, 0, 0.16);
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.opensms_context_menu_item {
+	appearance: none;
+	background: transparent;
+	border: none;
+	text-align: left;
+	padding: 8px 10px;
+	border-radius: 8px;
+	cursor: pointer;
+	font-size: 13px;
+	color: var(--opensms-text);
+}
+
+.opensms_context_menu_item:hover {
+	background: #f3f4f6;
+}
+
+.opensms_bubble_row.opensms_context_target_bubble .opensms_bubble {
+	border-color: #2563eb;
+	box-shadow: 0 0 0 3px rgba(37,99,235,0.26);
+}
+
+.opensms_messages.opensms_context_target_main {
+	background: #eef4ff;
+	box-shadow: inset 0 0 0 2px rgba(37,99,235,0.28);
+}
+
+.opensms_thread_item.opensms_context_target_list,
+.opensms_thread_list.opensms_context_target_list,
+.opensms_hidden_item.opensms_context_target_list,
+.opensms_modal_body.opensms_context_target_list {
+	box-shadow: inset 0 0 0 2px rgba(37,99,235,0.24);
+	border-radius: 12px;
+}
+
 .opensms_composer {
 	border-top: 1px solid var(--opensms-border);
 	padding: 12px 14px;
@@ -580,6 +644,75 @@
 .opensms_hidden_item_actions {
 	display: flex;
 	gap: 6px;
+}
+
+.opensms_dialpad_modal {
+	width: min(420px, calc(100vw - 24px));
+}
+
+.opensms_dialpad_body {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+}
+
+.opensms_dialpad_label {
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.opensms_dialpad_input {
+	font-size: 20px;
+	letter-spacing: 1px;
+	text-align: center;
+	font-weight: 700;
+	padding: 12px;
+}
+
+.opensms_dialpad_grid {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 8px;
+}
+
+.opensms_dialpad_key {
+	border: 1px solid var(--opensms-border);
+	background: #f8fafc;
+	color: var(--opensms-text);
+	border-radius: 12px;
+	min-height: 52px;
+	font-size: 20px;
+	font-weight: 700;
+	cursor: pointer;
+	transition: transform .05s ease, background-color .12s ease, border-color .12s ease;
+}
+
+.opensms_dialpad_key:hover {
+	background: #eef2ff;
+	border-color: #a5b4fc;
+}
+
+.opensms_dialpad_key.is_pressed {
+	background: #dbeafe;
+	border-color: #60a5fa;
+	transform: translateY(1px);
+}
+
+.opensms_dialpad_key_secondary {
+	font-size: 17px;
+	font-weight: 650;
+}
+
+.opensms_dialpad_actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 2px;
+}
+
+.opensms_dialpad_start:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
 }
 
 /* Responsive */

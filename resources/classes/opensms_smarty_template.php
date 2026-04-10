@@ -17,6 +17,7 @@ class opensms_smarty_template implements opensms_template_engine_interface {
 			require_once dirname(__DIR__, 4) . '/resources/templates/engine/smarty/Smarty.class.php';
 		}
 		$this->engine = new Smarty();
+		$this->engine->registerPlugin('modifier', 'json_encode', 'json_encode');
 
 		// Configure Smarty directories
 		$this->engine->setTemplateDir($this->template_directory);

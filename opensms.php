@@ -186,7 +186,7 @@ $sql .= "MAX(message_date) as last_date, ";
 $sql .= "COUNT(CASE WHEN message_read = false AND message_direction = 'inbound' THEN 1 END) as unread_count ";
 $sql .= "FROM v_messages ";
 $sql .= "WHERE domain_uuid = :domain_uuid ";
-$sql .= "AND (user_uuid = :user_uuid OR message_from IN (SELECT destination_number FROM v_destinations WHERE domain_uuid = :domain_uuid AND destination_type_text = 1)) ";
+$sql .= "AND (user_uuid = :user_uuid OR regexp_replace(coalesce(message_from,''), '\\D', '', 'g') IN (SELECT regexp_replace(coalesce(destination_number,''), '\\D', '', 'g') FROM v_destinations WHERE domain_uuid = :domain_uuid AND destination_type_text = 1)) ";
 $sql .= "AND (CASE WHEN message_direction = 'inbound' THEN message_from ELSE message_to END) NOT IN (SELECT user_setting_name FROM v_user_settings WHERE domain_uuid = :domain_uuid AND user_uuid = :user_uuid AND user_setting_category = 'opensms' AND user_setting_subcategory = 'hidden_thread' AND user_setting_enabled = 'true') ";
 $sql .= "GROUP BY thread_number ";
 $sql .= "ORDER BY last_date DESC ";

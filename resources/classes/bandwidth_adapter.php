@@ -257,7 +257,7 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 		// Map Bandwidth callback types to human-readable delivery statuses
 		$delivery_receipt_types = [
 			'message-sending'   => 'sending',
-			'message-sent'      => 'sent',
+			'message-sent'      => 'provider_success',
 			'message-delivered'  => 'delivered',
 			'message-failed'    => 'failed',
 		];
@@ -348,19 +348,33 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 	 */
 	public static function send(settings $settings, opensms_message $message): bool {
 
+		$legacy_settings = self::resolve_legacy_outbound_settings($message->provider_uuid ?? '');
+
 		// Get the Bandwidth configuration from settings
 		$account_id = $settings->get(self::OPENSMS_PROVIDER_NAME, 'account_id', '');
-		$url = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_url', "https://messaging.bandwidth.com/api/v2/users/{$account_id}/messages");
+		$url = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_url', '');
 		$application_id = $settings->get(self::OPENSMS_PROVIDER_NAME, 'application_id', '');
 
 		// API credentials: prefer api_token/api_secret, fall back to callback_user_id/callback_password
-		$api_username = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_token', '');
-		$api_password = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_secret', '');
-		if (empty($api_username)) {
-			$api_username = $settings->get(self::OPENSMS_PROVIDER_NAME, 'callback_user_id', '');
+		$api_username = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_token', $legacy_settings['http_auth_username'] ?? '');
+		$api_password = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_secret', $legacy_settings['http_auth_password'] ?? '');
+		$url = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_url', $legacy_settings['http_destination'] ?? 'https://messaging.bandwidth.com/api/v2/users/{$account_id}/messages');
+		if (empty($application_id)) {
+			$application_id = self::extract_application_id($legacy_settings);
 		}
-		if (empty($api_password)) {
-			$api_password = $settings->get(self::OPENSMS_PROVIDER_NAME, 'callback_password', '');
+
+		// Replace template variables in endpoint URLs: {$account_id}, {$user_id}, {$http_auth_username}, {$http_auth_password}
+		if (!empty($api_username)) {
+			$url = str_replace(['${http_auth_username}', '{$http_auth_username}'], urlencode($api_username), $url);
+		}
+		if (!empty($api_password)) {
+			$url = str_replace(['${http_auth_password}', '{$http_auth_password}'], urlencode($api_password), $url);
+		}
+		if (!empty($api_username)) {
+			$url = str_replace(['{$user_id}', '${user_id}'], urlencode($api_username), $url);
+		}
+		if (!empty($account_id)) {
+			$url = str_replace(['{$account_id}', '${account_id}'], urlencode($account_id), $url);
 		}
 
 		// Normalize phone numbers to E.164 format for Bandwidth API
@@ -370,7 +384,7 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 		// Payload structure for Bandwidth API
 		// Use the message UUID as the tag so delivery receipts can be matched
 		$payload = [
-			'to'            => [$to_number],
+			'to'            => [$to_number],	// Bandwidth expects an array of destination numbers
 			'from'          => $from_number,
 			'applicationId' => $application_id,
 			'text'          => $message->sms,
@@ -413,13 +427,24 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 		// Send the JSON-encoded payload to Bandwidth
 		$response = $curl_client->post_json($url, $payload, $headers);
 
+		$http_code = $response['info']['http_code'] ?? 0;
+		$response_body = $response['content'] ?? '';
+		if (strlen($response_body) > 1000) {
+			$response_body = substr($response_body, 0, 1000) . '... [truncated]';
+		}
+		$provider_response_log = '[opensms][bandwidth] Send response: HTTP ' . $http_code . ' body=' . $response_body;
+		error_log($provider_response_log);
+		syslog(LOG_DEBUG, $provider_response_log);
+
 		// Check for cURL transport errors
 		if (!empty($response['error'])) {
+			$transport_error_log = '[opensms][bandwidth] Transport error: ' . $response['error'];
+			error_log($transport_error_log);
+			syslog(LOG_ERR, $transport_error_log);
 			throw new curl_exception("Error sending message via Bandwidth: " . $response['error']);
 		}
 
 		// Check HTTP status code (Bandwidth returns 202 on success)
-		$http_code = $response['info']['http_code'] ?? 0;
 		if ($http_code < 200 || $http_code >= 300) {
 			$body = $response['content'] ?? '';
 			// Truncate long response bodies (e.g. those echoing back base64 data) to keep logs readable
@@ -430,6 +455,104 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 		}
 
 		return true;
+	}
+
+	/**
+	 * Load outbound provider settings from the legacy Messages provider model.
+	 */
+	private static function get_provider_outbound_settings(string $provider_uuid): array {
+		if (empty($provider_uuid)) {
+			return [];
+		}
+
+		$database = database::new();
+		$sql = "select provider_setting_name, provider_setting_value ";
+		$sql .= "from v_provider_settings ";
+		$sql .= "where provider_uuid = :provider_uuid ";
+		$sql .= "and provider_setting_category = 'outbound' ";
+		$sql .= "and provider_setting_enabled = 'true'";
+		$rows = $database->select($sql, ['provider_uuid' => $provider_uuid], 'all');
+
+		$settings = [];
+		if (!empty($rows)) {
+			foreach ($rows as $row) {
+				$name = $row['provider_setting_name'] ?? '';
+				$value = $row['provider_setting_value'] ?? '';
+				if ($name === '') {
+					continue;
+				}
+				if ($name === 'message_other') {
+					$settings['message_other'][] = $value;
+					continue;
+				}
+				$settings[$name] = $value;
+			}
+		}
+
+		return $settings;
+	}
+
+	/**
+	 * Resolve legacy outbound settings by current provider UUID, then by alias providers.
+	 */
+	private static function resolve_legacy_outbound_settings(string $provider_uuid): array {
+		$settings = self::get_provider_outbound_settings($provider_uuid);
+		if (!empty($settings)) {
+			return $settings;
+		}
+
+		foreach (['bandwidth.com', 'bandwidth'] as $provider_name) {
+			$alias_uuid = self::get_provider_uuid_by_name($provider_name);
+			if (!empty($alias_uuid) && $alias_uuid !== $provider_uuid) {
+				$settings = self::get_provider_outbound_settings($alias_uuid);
+				if (!empty($settings)) {
+					return $settings;
+				}
+			}
+		}
+
+		return [];
+	}
+
+	/**
+	 * Lookup provider UUID by provider name.
+	 */
+	private static function get_provider_uuid_by_name(string $provider_name): ?string {
+		if ($provider_name === '') {
+			return null;
+		}
+
+		$database = database::new();
+		$sql = "select provider_uuid from v_providers where lower(provider_name) = lower(:provider_name) limit 1";
+		$result = $database->select($sql, ['provider_name' => $provider_name], 'column');
+		if (is_array($result)) {
+			return $result[0] ?? null;
+		}
+		return $result ?: null;
+	}
+
+	/**
+	 * Extract applicationId from legacy message_other provider settings.
+	 */
+	private static function extract_application_id(array $legacy_settings): string {
+		if (empty($legacy_settings['message_other']) || !is_array($legacy_settings['message_other'])) {
+			return '';
+		}
+
+		foreach ($legacy_settings['message_other'] as $item) {
+			if (!is_string($item)) {
+				continue;
+			}
+			$parts = explode('=', $item, 2);
+			if (count($parts) !== 2) {
+				continue;
+			}
+			if (strcasecmp(trim($parts[0]), 'applicationId') === 0) {
+				return trim($parts[1]);
+			}
+		}
+
+		return '';
 	}
 
 	/**
@@ -450,6 +573,7 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 	 */
 	private static function upload_media(settings $settings, string $base64_data, string $content_type, string $media_name): string {
 
+		$legacy_settings = self::resolve_legacy_outbound_settings($message->provider_uuid ?? '');
 		$account_id = $settings->get(self::OPENSMS_PROVIDER_NAME, 'account_id', '');
 		$api_username = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_token', '');
 		$api_password = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_secret', '');
@@ -462,8 +586,8 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 
 		// URL-encode the media name to handle special characters
 		$encoded_name = rawurlencode($media_name);
-		$media_url = "https://messaging.bandwidth.com/api/v2/users/{$account_id}/media/{$encoded_name}";
-
+		$media_url = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_mms_url', $legacy_settings['message_media_url'] ?? "https://messaging.bandwidth.com/api/v2/users/{$account_id}/media/{$encoded_name}");
+		
 		// Decode base64 to raw binary for upload
 		$binary_data = base64_decode($base64_data, true);
 		if ($binary_data === false) {
@@ -654,6 +778,20 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 		$defaults['default_settings'][$y]['default_setting_name'] = 'text';
 		$defaults['default_settings'][$y]['default_setting_value'] = '';
 		$defaults['default_settings'][$y]['default_setting_enabled'] = 'false';
+		$y++;
+		$defaults['default_settings'][$y]['default_setting_uuid'] = 'dee4501f-c663-4e89-9456-fbf44bc294cc';
+		$defaults['default_settings'][$y]['default_setting_category'] = self::OPENSMS_PROVIDER_NAME;
+		$defaults['default_settings'][$y]['default_setting_subcategory'] = 'api_mms_url';
+		$defaults['default_settings'][$y]['default_setting_name'] = 'text';
+		$defaults['default_settings'][$y]['default_setting_value'] = 'https://messaging.bandwidth.com/api/v2/users/{$account_id}/media/{$encoded_name}';
+		$defaults['default_settings'][$y]['default_setting_enabled'] = 'true';
+		$y++;
+		$defaults['default_settings'][$y]['default_setting_uuid'] = '4a16d91c-77cc-4aee-b732-e6f204525780';
+		$defaults['default_settings'][$y]['default_setting_category'] = self::OPENSMS_PROVIDER_NAME;
+		$defaults['default_settings'][$y]['default_setting_subcategory'] = 'api_url';
+		$defaults['default_settings'][$y]['default_setting_name'] = 'text';
+		$defaults['default_settings'][$y]['default_setting_value'] = 'https://messaging.bandwidth.com/api/v2/users/{$account_id}/messages';
+		$defaults['default_settings'][$y]['default_setting_enabled'] = 'true';
 		return $defaults;
 	}
 

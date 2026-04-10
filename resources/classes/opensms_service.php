@@ -230,7 +230,7 @@ class opensms_service extends base_websocket_system_service {
 			}
 
 			// Get domain_uuid from the authenticated websocket message
-			$domain_uuid = $websocket_message->domain_uuid();
+			$domain_uuid = $payload['domain_uuid'] ?? $websocket_message->domain_uuid();
 			if (empty($domain_uuid)) {
 				throw new \InvalidArgumentException('Domain UUID is required');
 			}
@@ -430,6 +430,7 @@ class opensms_service extends base_websocket_system_service {
 	 */
 	protected function handle_send_request(websocket_message $websocket_message) {
 		$this->debug('Handling send request');
+		$message = null;
 
 		try {
 			$payload = $websocket_message->payload();
@@ -464,7 +465,7 @@ class opensms_service extends base_websocket_system_service {
 			$message->from_number = $payload['from_number'];
 			$message->sms = $payload['message_text'] ?? '';
 			$message->type = $payload['message_type'] ?? 'sms';
-			$message->domain_uuid = $websocket_message->domain_uuid();
+			$message->domain_uuid = $payload['domain_uuid'] ?? $websocket_message->domain_uuid();
 			$message->user_uuid = $payload['user_uuid'] ?? '';
 			$message->destination_uuid = $payload['from_destination_uuid'] ?? '';
 			$message->time = date('Y-m-d H:i:s');
@@ -486,7 +487,7 @@ class opensms_service extends base_websocket_system_service {
 				// since the database provider_uuid may differ from the adapter constant
 				if (defined($adapter_class . '::OPENSMS_PROVIDER_NAME')) {
 					$adapter_provider_name = constant($adapter_class . '::OPENSMS_PROVIDER_NAME');
-					if (!empty($provider_name) && strcasecmp($provider_name, $adapter_provider_name) === 0) {
+					if (!empty($provider_name) && $this->provider_matches_adapter($provider_name, $adapter_provider_name)) {
 						$this->info('Found matching adapter: ' . $adapter_class);
 						$send_start = microtime(true);
 						$success = $adapter_class::send($this->settings ?? new settings(), $message);
@@ -503,8 +504,8 @@ class opensms_service extends base_websocket_system_service {
 
 			$this->debug('Message sent successfully');
 
-			// Save sent message to database
-			$this->save_sent_message($message);
+			// Provider accepted the outbound message; persist as provider success
+			$this->save_outbound_message($message, 'provider_success');
 
 			// Respond with success
 			$response = new websocket_message();
@@ -521,6 +522,9 @@ class opensms_service extends base_websocket_system_service {
 			]);
 
 		} catch (\Exception $e) {
+			if ($message instanceof opensms_message) {
+				$this->save_outbound_message($message, 'failed', $e->getMessage());
+			}
 			$error_msg = $e->getMessage();
 			// Truncate very long error messages (e.g. those containing base64 data)
 			if (strlen($error_msg) > 600) {
@@ -538,7 +542,8 @@ class opensms_service extends base_websocket_system_service {
 			$response->resource_id($websocket_message->resource_id());
 			$response->payload([
 				'success' => false,
-				'error' => $e->getMessage()
+				'error' => $e->getMessage(),
+				'message_uuid' => $message instanceof opensms_message ? $message->uuid : null
 			]);
 		}
 
@@ -599,13 +604,40 @@ class opensms_service extends base_websocket_system_service {
 	}
 
 	/**
+	 * Match provider names in a backwards-compatible way.
+	 */
+	private function provider_matches_adapter(string $provider_name, string $adapter_provider_name): bool {
+		if (strcasecmp($provider_name, $adapter_provider_name) === 0) {
+			return true;
+		}
+
+		$provider_normalized = preg_replace('/[^a-z0-9]/', '', strtolower($provider_name));
+		$adapter_normalized = preg_replace('/[^a-z0-9]/', '', strtolower($adapter_provider_name));
+
+		if ($provider_normalized === '' || $adapter_normalized === '') {
+			return false;
+		}
+
+		if ($provider_normalized === $adapter_normalized) {
+			return true;
+		}
+
+		return str_starts_with($provider_normalized, $adapter_normalized)
+			|| str_starts_with($adapter_normalized, $provider_normalized);
+	}
+
+	/**
 	 * Save sent message to the database
 	 *
 	 * @param opensms_message $message
 	 * @return void
 	 */
-	private function save_sent_message(opensms_message $message): void {
+	private function save_outbound_message(opensms_message $message, string $delivery_status = 'sent', string $error_message = ''): void {
 		$database = parent::$database ?? new database();
+		$message->delivery_status = $delivery_status;
+		if (!empty($error_message)) {
+			$message->received_data = $error_message;
+		}
 
 		// Prepare message data for database
 		$message_array = [
@@ -633,7 +665,7 @@ class opensms_service extends base_websocket_system_service {
 		];
 
 		$database->save($message_array);
-		$this->debug('Saved sent message to database: ' . $message->uuid);
+		$this->debug('Saved outbound message to database: ' . $message->uuid . ' [' . $delivery_status . ']');
 	}
 
 	/**
@@ -732,7 +764,7 @@ class opensms_service extends base_websocket_system_service {
 			$payload = $websocket_message->payload();
 			$number = $this->normalize_number($payload['number'] ?? '');
 			$user_uuid = $payload['user_uuid'] ?? '';
-			$domain_uuid = $websocket_message->domain_uuid();
+			$domain_uuid = $payload['domain_uuid'] ?? $websocket_message->domain_uuid();
 			if (empty($number) || empty($user_uuid) || empty($domain_uuid)) {
 				throw new \InvalidArgumentException('Missing required fields');
 			}
@@ -767,7 +799,7 @@ class opensms_service extends base_websocket_system_service {
 			$payload = $websocket_message->payload();
 			$number = $this->normalize_number($payload['number'] ?? '');
 			$user_uuid = $payload['user_uuid'] ?? '';
-			$domain_uuid = $websocket_message->domain_uuid();
+			$domain_uuid = $payload['domain_uuid'] ?? $websocket_message->domain_uuid();
 			if (empty($number) || empty($user_uuid) || empty($domain_uuid)) {
 				throw new \InvalidArgumentException('Missing required fields');
 			}
@@ -801,7 +833,7 @@ class opensms_service extends base_websocket_system_service {
 		try {
 			$payload = $websocket_message->payload();
 			$user_uuid = $payload['user_uuid'] ?? '';
-			$domain_uuid = $websocket_message->domain_uuid();
+			$domain_uuid = $payload['domain_uuid'] ?? $websocket_message->domain_uuid();
 			if (empty($user_uuid) || empty($domain_uuid)) {
 				throw new \InvalidArgumentException('Missing required fields');
 			}
@@ -836,7 +868,7 @@ class opensms_service extends base_websocket_system_service {
 			$payload = $websocket_message->payload();
 			$thread = trim($payload['thread_number'] ?? '');
 			$user_uuid = $payload['user_uuid'] ?? '';
-			$domain_uuid = $websocket_message->domain_uuid();
+			$domain_uuid = $payload['domain_uuid'] ?? $websocket_message->domain_uuid();
 			if (empty($thread) || empty($user_uuid) || empty($domain_uuid)) {
 				throw new \InvalidArgumentException('Missing required fields');
 			}
@@ -871,7 +903,7 @@ class opensms_service extends base_websocket_system_service {
 			$payload = $websocket_message->payload();
 			$thread = trim($payload['thread_number'] ?? '');
 			$user_uuid = $payload['user_uuid'] ?? '';
-			$domain_uuid = $websocket_message->domain_uuid();
+			$domain_uuid = $payload['domain_uuid'] ?? $websocket_message->domain_uuid();
 			if (empty($thread) || empty($user_uuid) || empty($domain_uuid)) {
 				throw new \InvalidArgumentException('Missing required fields');
 			}
@@ -905,7 +937,7 @@ class opensms_service extends base_websocket_system_service {
 		try {
 			$payload = $websocket_message->payload();
 			$user_uuid = $payload['user_uuid'] ?? '';
-			$domain_uuid = $websocket_message->domain_uuid();
+			$domain_uuid = $payload['domain_uuid'] ?? $websocket_message->domain_uuid();
 			if (empty($user_uuid) || empty($domain_uuid)) {
 				throw new \InvalidArgumentException('Missing required fields');
 			}
