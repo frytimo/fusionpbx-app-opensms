@@ -348,19 +348,19 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 	 */
 	public static function send(settings $settings, opensms_message $message): bool {
 
-		$legacy_settings = self::resolve_legacy_outbound_settings($message->provider_uuid ?? '');
-
 		// Get the Bandwidth configuration from settings
 		$account_id = $settings->get(self::OPENSMS_PROVIDER_NAME, 'account_id', '');
-		$url = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_url', '');
 		$application_id = $settings->get(self::OPENSMS_PROVIDER_NAME, 'application_id', '');
+		$url = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_url', 'https://messaging.bandwidth.com/api/v2/users/{$account_id}/messages');
 
-		// API credentials: prefer api_token/api_secret, fall back to callback_user_id/callback_password
-		$api_username = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_token', $legacy_settings['http_auth_username'] ?? '');
-		$api_password = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_secret', $legacy_settings['http_auth_password'] ?? '');
-		$url = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_url', $legacy_settings['http_destination'] ?? 'https://messaging.bandwidth.com/api/v2/users/{$account_id}/messages');
-		if (empty($application_id)) {
-			$application_id = self::extract_application_id($legacy_settings);
+		// Standalone adapter mode: only use native Bandwidth settings
+		$api_username = trim((string)$settings->get(self::OPENSMS_PROVIDER_NAME, 'api_token', ''));
+		$api_password = trim((string)$settings->get(self::OPENSMS_PROVIDER_NAME, 'api_secret', ''));
+		$account_id = trim((string)$account_id, " \t\n\r\0\x0B{}");
+		$application_id = trim((string)$application_id, " \t\n\r\0\x0B{}");
+
+		if ($account_id === '' || $application_id === '' || $api_username === '' || $api_password === '') {
+			throw new \RuntimeException('Bandwidth configuration incomplete. Required settings: account_id, application_id, api_token, api_secret.');
 		}
 
 		// Replace template variables in endpoint URLs: {$account_id}, {$user_id}, {$http_auth_username}, {$http_auth_password}
@@ -376,6 +376,12 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 		if (!empty($account_id)) {
 			$url = str_replace(['{$account_id}', '${account_id}'], urlencode($account_id), $url);
 		}
+		if (preg_match('/\{\$[a-zA-Z0-9_]+\}/', $url)) {
+			throw new \RuntimeException('Bandwidth api_url contains unresolved template placeholders.');
+		}
+
+		$auth_user_preview = strlen($api_username) > 4 ? substr($api_username, 0, 4) . '***' : '***';
+		error_log('[opensms][bandwidth] Send config: url=' . $url . ' account_id=' . $account_id . ' application_id=' . $application_id . ' api_user=' . $auth_user_preview);
 
 		// Normalize phone numbers to E.164 format for Bandwidth API
 		$to_number = self::normalize_to_e164($message->to_number);
@@ -573,21 +579,23 @@ class bandwidth_adapter implements opensms_message_adapter, opensms_message_rout
 	 */
 	private static function upload_media(settings $settings, string $base64_data, string $content_type, string $media_name): string {
 
-		$legacy_settings = self::resolve_legacy_outbound_settings($message->provider_uuid ?? '');
-		$account_id = $settings->get(self::OPENSMS_PROVIDER_NAME, 'account_id', '');
-		$api_username = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_token', '');
-		$api_password = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_secret', '');
-		if (empty($api_username)) {
-			$api_username = $settings->get(self::OPENSMS_PROVIDER_NAME, 'callback_user_id', '');
-		}
-		if (empty($api_password)) {
-			$api_password = $settings->get(self::OPENSMS_PROVIDER_NAME, 'callback_password', '');
+		$account_id = trim((string)$settings->get(self::OPENSMS_PROVIDER_NAME, 'account_id', ''), " \t\n\r\0\x0B{}");
+		$api_username = trim((string)$settings->get(self::OPENSMS_PROVIDER_NAME, 'api_token', ''));
+		$api_password = trim((string)$settings->get(self::OPENSMS_PROVIDER_NAME, 'api_secret', ''));
+		if ($account_id === '' || $api_username === '' || $api_password === '') {
+			throw new \RuntimeException('Bandwidth media configuration incomplete. Required settings: account_id, api_token, api_secret.');
 		}
 
 		// URL-encode the media name to handle special characters
 		$encoded_name = rawurlencode($media_name);
-		$media_url = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_mms_url', $legacy_settings['message_media_url'] ?? "https://messaging.bandwidth.com/api/v2/users/{$account_id}/media/{$encoded_name}");
-		
+		$media_url = $settings->get(self::OPENSMS_PROVIDER_NAME, 'api_mms_url', 'https://messaging.bandwidth.com/api/v2/users/{$account_id}/media/{$encoded_name}');
+		$media_url = str_replace(['{$account_id}', '${account_id}'], urlencode($account_id), $media_url);
+		$media_url = str_replace(['{$user_id}', '${user_id}', '{$http_auth_username}', '${http_auth_username}'], urlencode($api_username), $media_url);
+		$media_url = str_replace(['{$encoded_name}', '${encoded_name}'], $encoded_name, $media_url);
+		if (preg_match('/\{\$[a-zA-Z0-9_]+\}/', $media_url)) {
+			throw new \RuntimeException('Bandwidth api_mms_url contains unresolved template placeholders.');
+		}
+
 		// Decode base64 to raw binary for upload
 		$binary_data = base64_decode($base64_data, true);
 		if ($binary_data === false) {
