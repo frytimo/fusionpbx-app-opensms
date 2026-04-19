@@ -198,3 +198,29 @@ $text['status-warning']['it-it'] = "Avviso";
 $text['status-warning']['pt-br'] = "Aviso";
 $text['status-warning']['ru-ru'] = "Предупреждение";
 
+$text['title-opensms-providers']['en-us'] = "OpenSMS Providers";
+$text['title-opensms-providers']['en-gb'] = "OpenSMS Providers";
+$text['title-opensms-providers']['de-de'] = "OpenSMS-Anbieter";
+$text['title-opensms-providers']['es-cl'] = "Proveedores de OpenSMS";
+$text['title-opensms-providers']['fr-fr'] = "Fournisseurs OpenSMS";
+$text['title-opensms-providers']['it-it'] = "Fornitori OpenSMS";
+$text['title-opensms-providers']['pt-br'] = "Fornecedores OpenSMS";
+$text['title-opensms-providers']['ru-ru'] = "Поставщики OpenSMS";
+
+$text['label-opensms-provider-import']['en-us'] = "OpenSMS Provider Importer";
+$text['label-opensms-provider-import']['en-gb'] = "OpenSMS Provider Importer";
+$text['label-opensms-provider-import']['de-de'] = "OpenSMS-Anbieterimporteur";
+$text['label-opensms-provider-import']['es-cl'] = "Importador de Proveedores OpenSMS";
+$text['label-opensms-provider-import']['fr-fr'] = "Importateur de Fournisseurs OpenSMS";
+$text['label-opensms-provider-import']['it-it'] = "Importatore di Fornitori OpenSMS";
+$text['label-opensms-provider-import']['pt-br'] = "Importador de Fornecedores OpenSMS";
+$text['label-opensms-provider-import']['ru-ru'] = "Импортер поставщиков OpenSMS";
+
+$text['description-opensms-provider-import']['en-us'] = "Import provider arrays for native OpenSMS trigger usage.";
+$text['description-opensms-provider-import']['en-gb'] = "Import provider arrays for native OpenSMS trigger usage.";
+$text['description-opensms-provider-import']['de-de'] = "Anbieter-Arrays für die native OpenSMS-Trigger-Nutzung importieren.";
+$text['description-opensms-provider-import']['es-cl'] = "Importar arreglos de proveedores para el uso nativo de disparadores de OpenSMS.";
+$text['description-opensms-provider-import']['fr-fr'] = "Importer les tableaux de fournisseurs pour une utilisation native des déclencheurs OpenSMS.";
+$text['description-opensms-provider-import']['it-it'] = "Importa array dei fornitori per l'uso nativo dei trigger OpenSMS.";
+$text['description-opensms-provider-import']['pt-br'] = "Importar arrays de provedores para uso nativo de gatilhos do OpenSMS.";
+$text['description-opensms-provider-import']['ru-ru'] = "Импортировать массивы поставщиков для использования триггеров OpenSMS нативно.";

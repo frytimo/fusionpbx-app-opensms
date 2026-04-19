@@ -92,6 +92,10 @@
 	$apps[$x]['permissions'][$y]['groups'][] = "superadmin";
 	$apps[$x]['permissions'][$y]['groups'][] = "admin";
 	$apps[$x]['permissions'][$y]['groups'][] = "user";
+	$y++;
+	$apps[$x]['permissions'][$y]['name'] = "opensms_provider_import";
+	$apps[$x]['permissions'][$y]['groups'][] = "superadmin";
+	$apps[$x]['permissions'][$y]['groups'][] = "admin";
 
 // configuration from adapters
 	$auto_loader = new auto_loader(false);

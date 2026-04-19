@@ -1,4 +1,3 @@
-
 # OpenSMS
 
 OpenSMS is an open-source SMS application designed to be used with FusionPBX(r) system. It provides a developer friendly way to add new providers within this framework.
@@ -24,11 +23,13 @@ Before installing OpenSMS, ensure you have the following:
 ### Installation Steps
 
 1. Clone the repository:
+
 ```bash
 git clone https://github.com/frytimo/fusionpbx-app-opensms.git /var/www/fusionpbx/app/opensms
 ```
 
 1. Run upgrade commands
+
 ```bash
 php /var/www/fusionpbx/core/upgrade/upgrade.php --defaults
 ```
@@ -83,4 +84,3 @@ For support, please open an issue on our [GitHub repository](https://github.com/
 - [ ] Add support for existing array format in the official FusionPBX SMS application
 
 ## Contact
-
