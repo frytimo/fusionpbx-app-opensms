@@ -52,7 +52,7 @@ class opensms_service extends base_websocket_system_service {
 	 *
 	 * @return void
 	 */
-	protected function reload_settings(): void {
+	public function reload_settings(): void {
 		// re-read the config file to get any possible changes
 		parent::$config->read();
 

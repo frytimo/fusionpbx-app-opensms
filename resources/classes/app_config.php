@@ -489,58 +489,58 @@ class Application {
 	}
 }
 
-// Usage example with chaining using the structure from earlier
-$app = (new Application(new ApplicationDetails()))
-	->add_database_table(
-		(new DatabaseTable())
-			->set_name('users')
-			->set_parent('')
-			->add_field(
-				(new DatabaseField())
-					->set_name('id')
-					->set_type('integer', 'pgsql')
-					->set_key_type('primary')
-			)
-			->add_field(
-				(new DatabaseField())
-					->set_name('username')
-					->set_type('string', 'pgsql')
-					->set_search_by('1')
-					->set_description('User login name')
-			)
-	)
-	->add_database_table(
-		(new DatabaseTable())
-			->set_name('messages')
-			->set_parent('')
-			->add_field(
-				(new DatabaseField())
-					->set_name('id')
-					->set_type('integer', 'pgsql')
-					->set_key_type('primary')
-			)
-			->add_field(
-				(new DatabaseField())
-					->set_name('content')
-					->set_type('text', 'pgsql')
-					->set_description('Message content')
-			)
-	)
-	->add_permission(
-		(new Permission())
-			->set_name('admin')
-			->set_groups(['admin', 'moderator'])
-	)
-	->add_permission(
-		(new Permission())
-			->set_name('user')
-			->set_groups(['user'])
-	);
+// // Usage example with chaining using the structure from earlier
+// $app = (new Application(new ApplicationDetails()))
+// 	->add_database_table(
+// 		(new DatabaseTable())
+// 			->set_name('users')
+// 			->set_parent('')
+// 			->add_field(
+// 				(new DatabaseField())
+// 					->set_name('id')
+// 					->set_type('integer', 'pgsql')
+// 					->set_key_type('primary')
+// 			)
+// 			->add_field(
+// 				(new DatabaseField())
+// 					->set_name('username')
+// 					->set_type('string', 'pgsql')
+// 					->set_search_by('1')
+// 					->set_description('User login name')
+// 			)
+// 	)
+// 	->add_database_table(
+// 		(new DatabaseTable())
+// 			->set_name('messages')
+// 			->set_parent('')
+// 			->add_field(
+// 				(new DatabaseField())
+// 					->set_name('id')
+// 					->set_type('integer', 'pgsql')
+// 					->set_key_type('primary')
+// 			)
+// 			->add_field(
+// 				(new DatabaseField())
+// 					->set_name('content')
+// 					->set_type('text', 'pgsql')
+// 					->set_description('Message content')
+// 			)
+// 	)
+// 	->add_permission(
+// 		(new Permission())
+// 			->set_name('admin')
+// 			->set_groups(['admin', 'moderator'])
+// 	)
+// 	->add_permission(
+// 		(new Permission())
+// 			->set_name('user')
+// 			->set_groups(['user'])
+// 	);
 
-// Get the array representation
-$result = $app->to_array();
-print_r($result);
+// // Get the array representation
+// $result = $app->to_array();
+// print_r($result);
 
-$x = 0;
-include '../../app_config.php';
-print_r($apps[$x]);
+// $x = 0;
+// include '../../app_config.php';
+// print_r($apps[$x]);
