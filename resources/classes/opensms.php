@@ -315,6 +315,9 @@ class opensms {
 		});
 
 		$chain = new class($instances) implements opensms_message_modifier {
+			/**
+			 * @var opensms_message_modifier[]
+			 */
 			private $modifiers;
 
 			public function __construct(array $modifiers) {
@@ -329,46 +332,6 @@ class opensms {
 
 			public function priority(): int {
 				return -1;  // build chain has to run before any other modifier
-			}
-		};
-
-		return $chain;
-	}
-
-	/**
-	 * Builds a chain of message listeners based on the provided listeners
-	 *
-	 * This method creates and configures a chain of opensms_message_listener objects
-	 * according to the listeners array. Each listener in the array is used to construct
-	 * and link listeners in a chain of responsibility pattern.
-	 *
-	 * @param array $listeners An array of listener configurations used to build the listener chain
-	 *
-	 * @return opensms_message_listener The first listener in the constructed listener chain
-	 */
-	public static function build_listener_chain(array $listeners): opensms_message_listener {
-		$instances = [];
-
-		// Validate modifier classes
-		foreach ($listeners as $class) {
-			$instance = new $class();
-			if (!($instance instanceof opensms_message_listener)) {
-				throw new InvalidArgumentException("Modifier class $class does not implement opensms_message_listener");
-			}
-			$instances[] = $instance;
-		}
-
-		$chain = new class($instances) implements opensms_message_listener {
-			private $listeners;
-
-			public function __construct(array $listeners) {
-				$this->listeners = $listeners;
-			}
-
-			public function __invoke(settings $settings, opensms_message $message): void {
-				foreach ($this->listeners as $listener) {
-					$listener($settings, $message);
-				}
 			}
 
 			public static function app_defaults(database $database): void {}
