@@ -97,10 +97,12 @@
 	$apps[$x]['permissions'][$y]['groups'][] = "superadmin";
 	$apps[$x]['permissions'][$y]['groups'][] = "admin";
 
-// configuration from adapters
-	$auto_loader = new auto_loader(false);
-	$auto_loader->reload_classes();
-	$adapters = $auto_loader->get_interface_list('opensms_message_adapter');
+// Set global autoload
+	global $autoload;
+	if (!isset($autoload) || !($autoload instanceof auto_loader)) {
+		$autoload = new auto_loader();
+	}
+ 	$adapters = $autoload->get_interface_list('opensms_message_adapter');
 
 // Merge all default settings categories from adapters to treat them as part of the main app
 	foreach ($adapters as $adapter_class) {
