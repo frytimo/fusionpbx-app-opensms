@@ -26,7 +26,7 @@ class opensms_message_database_writer implements opensms_message_listener {
 	 *
 	 * @param settings        $settings Configuration and resources required to persist the message
 	 *                                  (database connection, table names, logging flags, etc.).
-	 * @param opensms_message $message  The message instance to validate and persist.
+	 * @param opensms_message $opensms_message  The message instance to validate and persist.
 	 *
 	 * @return void
 	 *
@@ -37,11 +37,11 @@ class opensms_message_database_writer implements opensms_message_listener {
 	 * @see opensms_message
 	 * @see settings
 	 */
-	public function on_message(settings $settings, opensms_message $message): void {
+	public function on_message(settings $settings, opensms_message $opensms_message): void {
 
 		// Handle delivery receipts: update the original outbound message status
-		if ($message->type === 'delivery_receipt') {
-			$this->handle_delivery_receipt($settings, $message);
+		if ($opensms_message->type === 'delivery_receipt') {
+			$this->handle_delivery_receipt($settings, $opensms_message);
 			return;
 		}
 
@@ -51,19 +51,19 @@ class opensms_message_database_writer implements opensms_message_listener {
 				[
 					'message_queue_uuid' => uuid(),
 					// 'message_uuid' => $message->uuid,			// message_queue table does not store the message UUID
-					'domain_uuid'        => $message->domain_uuid,
-					'provider_uuid'      => $message->provider_uuid,
-					'user_uuid'          => $message->user_uuid,
-					'group_uuid'         => $message->group_uuid,
-					'contact_uuid'       => $message->contact_uuid,
+					'domain_uuid'        => $opensms_message->domain_uuid,
+					'provider_uuid'      => $opensms_message->provider_uuid,
+					'user_uuid'          => $opensms_message->user_uuid,
+					'group_uuid'         => $opensms_message->group_uuid,
+					'contact_uuid'       => $opensms_message->contact_uuid,
 					'hostname'           => gethostname(),
-					'message_type'       => $message->type,
+					'message_type'       => $opensms_message->type,
 					'message_direction'  => 'inbound',
 					'message_date'       => date('Y-m-d H:i:s'),
-					'message_from'       => $message->from_number,
-					'message_to'         => $message->to_number,
-					'message_text'       => $message->sms,
-					'message_json'       => json_encode($message),
+					'message_from'       => $opensms_message->from_number,
+					'message_to'         => $opensms_message->to_number,
+					'message_text'       => $opensms_message->sms,
+					'message_json'       => json_encode($opensms_message),
 					// 'message_time' => $message->time,
 					// 'message_mms' => json_encode($message->mms),
 					// 'message_status' => self::MESSAGE_STATUS_WAITING,
@@ -71,21 +71,21 @@ class opensms_message_database_writer implements opensms_message_listener {
 			],
 			'messages'      => [
 				[
-					'message_uuid'      => $message->uuid,
-					'domain_uuid'       => $message->domain_uuid,
-					'provider_uuid'     => $message->provider_uuid,
-					'user_uuid'         => $message->user_uuid,
-					'group_uuid'        => $message->group_uuid,
-					'contact_uuid'      => $message->contact_uuid,
+					'message_uuid'      => $opensms_message->uuid,
+					'domain_uuid'       => $opensms_message->domain_uuid,
+					'provider_uuid'     => $opensms_message->provider_uuid,
+					'user_uuid'         => $opensms_message->user_uuid,
+					'group_uuid'        => $opensms_message->group_uuid,
+					'contact_uuid'      => $opensms_message->contact_uuid,
 					'hostname'          => gethostname(),
-					'message_type'      => $message->type,
+					'message_type'      => $opensms_message->type,
 					'message_direction' => 'inbound',
 					'message_date'      => date('Y-m-d H:i:s'),
 					'message_read'      => false,
-					'message_from'      => $message->from_number,
-					'message_to'        => $message->to_number,
-					'message_text'      => $message->sms,
-					'message_json'      => json_encode($message),
+					'message_from'      => $opensms_message->from_number,
+					'message_to'        => $opensms_message->to_number,
+					'message_text'      => $opensms_message->sms,
+					'message_json'      => json_encode($opensms_message),
 				]
 			]
 		];
@@ -155,4 +155,25 @@ class opensms_message_database_writer implements opensms_message_listener {
 			'message_uuid'  => $original_uuid,
 		]);
 	}
+
+	/**
+	 * Hook in to the app_defaults
+	 *
+	 * @return void
+	 */
+	public static function app_defaults(database $database): void {}
+
+	/**
+	 * Hook in to the app_config
+	 *
+	 * @return array|null
+	 */
+	public static function app_config(): ?array { return null; }
+
+	/**
+	 * Hook in to the app_menu
+	 *
+	 * @return array|null
+	 */
+	public static function app_menu(): ?array { return null; }
 }

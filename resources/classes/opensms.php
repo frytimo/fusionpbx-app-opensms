@@ -151,14 +151,13 @@ class opensms {
 	/**
 	 * Broadcasts an event to all connected clients or subscribers
 	 *
-	 * @param mixed $event The event data to be broadcast
+	 * @param event_message $event_message The event data to be broadcast
 	 *
 	 * @return void
 	 */
-	public static function broadcast_event($event): void {
+	public static function broadcast_event(event_message $event_message): void {
 		// Set globals
-		/** @var settings $settings */
-		global $settings;
+		global $settings; /** @var settings $settings */
 
 		// Create a new auto loader with cache disabled
 		$auto_loader = new auto_loader(true);
@@ -170,8 +169,8 @@ class opensms {
 		$modifiers = $auto_loader->get_interface_list('opensms_message_modifier');
 		$listeners = $auto_loader->get_interface_list('opensms_message_listener');
 
-		// Create a message from the event
-		$message = self::create_message_from_switch_event($settings, $event);
+		// Create an opensms message from the event
+		$message = self::create_message_from_switch_event($settings, $event_message);
 
 		if ($message === null) {
 			return;
@@ -214,24 +213,24 @@ class opensms {
 	/**
 	 * Create an opensms_message from a switch event with full routing info.
 	 *
-	 * @param settings      $settings The settings object containing configuration parameters
-	 * @param event_message $event    The switch event message object
+	 * @param settings      $settings      The settings object containing configuration parameters
+	 * @param event_message $event_message The switch event message object
 	 *
 	 * @return opensms_message|null
 	 */
-	public static function create_message_from_switch_event(settings $settings, $event): ?opensms_message {
+	public static function create_message_from_switch_event(settings $settings, event_message $event_message): ?opensms_message {
 		$database = $settings->database();
 
 		// Extract extension and domain from event
-		$from_parts  = explode('@', $event->from);
+		$from_parts  = explode('@', $event_message->from);
 		$extension   = $from_parts[0] ?? '';
 		$domain_name = $from_parts[1] ?? '';
 
 		// Create message - provider_uuid will be resolved by router
 		$message = new opensms_message(uuid(), '');
 		$message->from_number = $extension;
-		$message->to_number   = $event->to_user ?? '';
-		$message->sms         = $event->body();
+		$message->to_number   = $event_message->to_user ?? '';
+		$message->sms         = $event_message->body();
 		$message->type        = 'sms';
 		$message->domain_name  = $domain_name;
 

@@ -17,4 +17,25 @@ interface opensms_message_notifier {
      * @throws \RuntimeException         If notification cannot be completed due to runtime errors (I/O, network, etc.).
      */
     public function send(settings $settings, opensms_message $message): void;
+
+	/**
+	 * Hook in to the app_defaults
+	 *
+	 * @return void
+	 */
+	public static function app_defaults(database $database): void;
+
+	/**
+	 * Hook in to the app_config
+	 *
+	 * @return array|null
+	 */
+	public static function app_config(): ?array;
+
+	/**
+	 * Hook in to the app_menu
+	 *
+	 * @return array|null
+	 */
+	public static function app_menu(): ?array;
 }

@@ -97,14 +97,14 @@
 	$apps[$x]['permissions'][$y]['groups'][] = "superadmin";
 	$apps[$x]['permissions'][$y]['groups'][] = "admin";
 
-// Set global autoload
+// Make sure the global autoload variable is set and is an instance of auto_loader
 	global $autoload;
 	if (!isset($autoload) || !($autoload instanceof auto_loader)) {
 		$autoload = new auto_loader();
 	}
- 	$adapters = $autoload->get_interface_list('opensms_message_adapter');
 
 // Merge all default settings categories from adapters to treat them as part of the main app
+ 	$adapters = $autoload->get_interface_list('opensms_message_adapter');
 	foreach ($adapters as $adapter_class) {
 		// $x is declared in caller (upgrade index.php file) and must not be declared here
 		$opensms_config = $adapter_class::app_config();
@@ -118,6 +118,116 @@
 						$apps[$x][$category] = array_merge($apps[$x][$category], $opensms_config[$category]);
 					} else {
 						// If the category doesn't exist in the main app, add it directly from the adapter
+						$apps[$x][$category] = $opensms_config[$category];
+					}
+				}
+			}
+		}
+	}
+
+// Merge all default settings categories from consumers to treat them as part of the main app
+	$consumers = $autoload->get_interface_list('opensms_message_consumer');
+	foreach ($consumers as $consumer_class) {
+		// $x is declared in caller (upgrade index.php file) and must not be declared here
+		$opensms_config = $consumer_class::app_config();
+		// Check the consumer has a valid configuration array
+		if ($opensms_config !== null && is_array($opensms_config)) {
+			// Iterate over the configuration categories of the main app and the consumer config
+			foreach ($opensms_config as $category => $value) {
+				if (is_array($value)) {
+					// Compare the category names and merge if they exist in the consumer config
+					if (isset($apps[$x][$category]) && is_array($apps[$x][$category])) {
+						$apps[$x][$category] = array_merge($apps[$x][$category], $opensms_config[$category]);
+					} else {
+						// If the category doesn't exist in the main app, add it directly from the consumer
+						$apps[$x][$category] = $opensms_config[$category];
+					}
+				}
+			}
+		}
+	}
+
+// Merge all default settings categories from listeners to treat them as part of the main app
+	$writers = $autoload->get_interface_list('opensms_message_listener');
+	foreach ($writers as $writer_class) {
+		// $x is declared in caller (upgrade index.php file) and must not be declared here
+		$opensms_config = $writer_class::app_config();
+		// Check the writer has a valid configuration array
+		if ($opensms_config !== null && is_array($opensms_config)) {
+			// Iterate over the configuration categories of the main app and the writer config
+			foreach ($opensms_config as $category => $value) {
+				if (is_array($value)) {
+					// Compare the category names and merge if they exist in the writer config
+					if (isset($apps[$x][$category]) && is_array($apps[$x][$category])) {
+						$apps[$x][$category] = array_merge($apps[$x][$category], $opensms_config[$category]);
+					} else {
+						// If the category doesn't exist in the main app, add it directly from the writer
+						$apps[$x][$category] = $opensms_config[$category];
+					}
+				}
+			}
+		}
+	}
+
+// Merge all default settings categories from modifiers to treat them as part of the main app
+	$modifiers = $autoload->get_interface_list('opensms_message_modifier');
+	foreach ($modifiers as $modifier_class) {
+		// $x is declared in caller (upgrade index.php file) and must not be declared here
+		$opensms_config = $modifier_class::app_config();
+		// Check the modifier has a valid configuration array
+		if ($opensms_config !== null && is_array($opensms_config)) {
+			// Iterate over the configuration categories of the main app and the modifier config
+			foreach ($opensms_config as $category => $value) {
+				if (is_array($value)) {
+					// Compare the category names and merge if they exist in the modifier config
+					if (isset($apps[$x][$category]) && is_array($apps[$x][$category])) {
+						$apps[$x][$category] = array_merge($apps[$x][$category], $opensms_config[$category]);
+					} else {
+						// If the category doesn't exist in the main app, add it directly from the modifier
+						$apps[$x][$category] = $opensms_config[$category];
+					}
+				}
+			}
+		}
+	}
+
+// Merge all default settings categories from notifiers to treat them as part of the main app
+	$notifiers = $autoload->get_interface_list('opensms_message_notifier');
+	foreach ($notifiers as $notifier_class) {
+		// $x is declared in caller (upgrade index.php file) and must not be declared here
+		$opensms_config = $notifier_class::app_config();
+		// Check the notifier has a valid configuration array
+		if ($opensms_config !== null && is_array($opensms_config)) {
+			// Iterate over the configuration categories of the main app and the notifier config
+			foreach ($opensms_config as $category => $value) {
+				if (is_array($value)) {
+					// Compare the category names and merge if they exist in the notifier config
+					if (isset($apps[$x][$category]) && is_array($apps[$x][$category])) {
+						$apps[$x][$category] = array_merge($apps[$x][$category], $opensms_config[$category]);
+					} else {
+						// If the category doesn't exist in the main app, add it directly from the notifier
+						$apps[$x][$category] = $opensms_config[$category];
+					}
+				}
+			}
+		}
+	}
+
+// Merge all default settings categories from routers to treat them as part of the main app
+	$routers = $autoload->get_interface_list('opensms_message_router');
+	foreach ($routers as $router_class) {
+		// $x is declared in caller (upgrade index.php file) and must not be declared here
+		$opensms_config = $router_class::app_config();
+		// Check the router has a valid configuration array
+		if ($opensms_config !== null && is_array($opensms_config)) {
+			// Iterate over the configuration categories of the main app and the router config
+			foreach ($opensms_config as $category => $value) {
+				if (is_array($value)) {
+					// Compare the category names and merge if they exist in the router config
+					if (isset($apps[$x][$category]) && is_array($apps[$x][$category])) {
+						$apps[$x][$category] = array_merge($apps[$x][$category], $opensms_config[$category]);
+					} else {
+						// If the category doesn't exist in the main app, add it directly from the router
 						$apps[$x][$category] = $opensms_config[$category];
 					}
 				}

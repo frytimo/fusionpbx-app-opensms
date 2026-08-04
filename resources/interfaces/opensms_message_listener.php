@@ -10,11 +10,32 @@ interface opensms_message_listener {
 	 * long-running tasks should be delegated to background workers.
 	 *
 	 * @param settings        $settings The global settings object for configuration access.
-	 * @param opensms_message $message  The message to process.
+	 * @param opensms_message $opensms_message  The message to process.
 	 * 
 	 * @return void
 	 * @throws \InvalidArgumentException If the provided message is malformed or missing required data.
 	 * @throws \RuntimeException         If processing cannot be completed due to runtime errors (I/O, network, etc.).
 	 */
-	public function on_message(settings $settings, opensms_message $message): void;
+	public function on_message(settings $settings, opensms_message $opensms_message): void;
+
+	/**
+	 * Hook in to the app_defaults
+	 *
+	 * @return void
+	 */
+	public static function app_defaults(database $database): void;
+
+	/**
+	 * Hook in to the app_config
+	 *
+	 * @return array|null
+	 */
+	public static function app_config(): ?array;
+
+	/**
+	 * Hook in to the app_menu
+	 *
+	 * @return array|null
+	 */
+	public static function app_menu(): ?array;
 }

@@ -42,4 +42,25 @@ interface opensms_message_modifier {
 	 * @return int
 	 */
 	public function priority(): int;
+
+	/**
+	 * Hook in to the app_defaults
+	 *
+	 * @return void
+	 */
+	public static function app_defaults(database $database): void;
+
+	/**
+	 * Hook in to the app_config
+	 *
+	 * @return array|null
+	 */
+	public static function app_config(): ?array;
+
+	/**
+	 * Hook in to the app_menu
+	 *
+	 * @return array|null
+	 */
+	public static function app_menu(): ?array;
 }

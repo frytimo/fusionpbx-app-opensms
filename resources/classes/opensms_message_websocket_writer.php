@@ -21,11 +21,11 @@ class opensms_message_websocket_writer implements opensms_message_listener {
 	 * subscribed clients receive real-time updates of new messages.
 	 *
 	 * @param settings        $settings Configuration and resources required for websocket connection
-	 * @param opensms_message $message  The message instance to broadcast
+	 * @param opensms_message $opensms_message  The message instance to broadcast
 	 *
 	 * @return void
 	 */
-	public function on_message(settings $settings, opensms_message $message): void {
+	public function on_message(settings $settings, opensms_message $opensms_message): void {
 		// Get websocket connection settings
 		$host = $settings->get('websocket', 'host', '127.0.0.1');
 		$port = $settings->get('websocket', 'port', 8080);
@@ -71,32 +71,32 @@ class opensms_message_websocket_writer implements opensms_message_listener {
 			$ws_message->service_name(opensms_service::get_service_name());
 
 			// Handle delivery receipts differently from inbound messages
-			if ($message->type === 'delivery_receipt') {
+			if ($opensms_message->type === 'delivery_receipt') {
 				$ws_message->topic('DELIVERY_RECEIPT');
 				$payload = [
-					'original_message_uuid' => $message->delivery_original_uuid,
-					'delivery_status'       => $message->delivery_status,
-					'delivery_time'         => $message->time ?: date('Y-m-d H:i:s'),
-					'delivery_detail'       => $message->sms,
-					'from_number'           => $message->from_number,
-					'to_number'             => $message->to_number,
+					'original_message_uuid' => $opensms_message->delivery_original_uuid,
+					'delivery_status'       => $opensms_message->delivery_status,
+					'delivery_time'         => $opensms_message->time ?: date('Y-m-d H:i:s'),
+					'delivery_detail'       => $opensms_message->sms,
+					'from_number'           => $opensms_message->from_number,
+					'to_number'             => $opensms_message->to_number,
 				];
 			} else {
 				$ws_message->topic('MESSAGE');
 				$payload = [
-					'message_uuid'     => $message->uuid,
+					'message_uuid'     => $opensms_message->uuid,
 					'direction'        => 'inbound',
-					'from_number'      => $message->from_number,
-					'to_number'        => $message->to_number,
-					'message_text'     => $message->sms,
-					'message_type'     => $message->type,
-					'message_time'     => $message->time ?: date('Y-m-d H:i:s'),
-					'domain_uuid'      => $message->domain_uuid,
-					'domain_name'      => $message->domain_name,
-					'user_uuid'        => $message->user_uuid,
-					'provider_uuid'    => $message->provider_uuid,
-					'destination_uuid' => $message->destination_uuid,
-					'mms'              => !empty($message->mms) ? $message->mms : null,
+					'from_number'      => $opensms_message->from_number,
+					'to_number'        => $opensms_message->to_number,
+					'message_text'     => $opensms_message->sms,
+					'message_type'     => $opensms_message->type,
+					'message_time'     => $opensms_message->time ?: date('Y-m-d H:i:s'),
+					'domain_uuid'      => $opensms_message->domain_uuid,
+					'domain_name'      => $opensms_message->domain_name,
+					'user_uuid'        => $opensms_message->user_uuid,
+					'provider_uuid'    => $opensms_message->provider_uuid,
+					'destination_uuid' => $opensms_message->destination_uuid,
+					'mms'              => !empty($opensms_message->mms) ? $opensms_message->mms : null,
 				];
 			}
 
@@ -117,4 +117,25 @@ class opensms_message_websocket_writer implements opensms_message_listener {
 			error_log("OpenSMS WebSocket Writer Error: " . $e->getMessage());
 		}
 	}
+
+	/**
+	 * Hook in to the app_defaults
+	 *
+	 * @return void
+	 */
+	public static function app_defaults(database $database): void {}
+
+	/**
+	 * Hook in to the app_config
+	 *
+	 * @return array|null
+	 */
+	public static function app_config(): ?array { return null; }
+
+	/**
+	 * Hook in to the app_menu
+	 *
+	 * @return array|null
+	 */
+	public static function app_menu(): ?array { return null; }
 }

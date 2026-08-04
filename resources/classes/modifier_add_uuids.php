@@ -67,4 +67,25 @@ class modifier_add_uuids implements opensms_message_modifier {
 	public function priority(): int {
 		return 5; // Priority after removing plus
 	}
+
+	/**
+	 * Hook in to the app_defaults
+	 *
+	 * @return void
+	 */
+	public static function app_defaults(database $database): void {}
+
+	/**
+	 * Hook in to the app_config
+	 *
+	 * @return array|null
+	 */
+	public static function app_config(): ?array { return null; }
+
+	/**
+	 * Hook in to the app_menu
+	 *
+	 * @return array|null
+	 */
+	public static function app_menu(): ?array { return null; }
 }
