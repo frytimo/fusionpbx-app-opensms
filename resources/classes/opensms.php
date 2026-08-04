@@ -370,6 +370,10 @@ class opensms {
 					$listener($settings, $message);
 				}
 			}
+
+			public static function app_defaults(database $database): void {}
+			public static function app_config(): ?array { return null; }
+			public static function app_menu(): ?array { return null; }
 		};
 
 		return $chain;
